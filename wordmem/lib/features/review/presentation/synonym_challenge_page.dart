@@ -181,6 +181,9 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
+                    // 漏选 / 错选单词的释义
+                    ..._buildReviewDefinitions(challenge),
+                    const SizedBox(height: 16),
                     SizedBox(
                       height: 48,
                       child: FilledButton(
@@ -212,6 +215,62 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 提交后生成漏选 / 错选单词的释义卡片
+  List<Widget> _buildReviewDefinitions(SynonymChallenge challenge) {
+    final dict = ref.read(dictSourceProvider);
+    final widgets = <Widget>[];
+    // 漏选：正确答案里没被选中的
+    for (final w in challenge.correct) {
+      if (_selected.contains(w)) continue;
+      final d = dict.lookup(w);
+      if (d != null && (d.translation?.isNotEmpty ?? false)) {
+        widgets.add(_defRow(w, d.translation!, missed: true));
+      }
+    }
+    // 错选：选中但不是正确答案的
+    for (final w in _selected) {
+      if (challenge.correct.contains(w)) continue;
+      final d = dict.lookup(w);
+      if (d != null && (d.translation?.isNotEmpty ?? false)) {
+        widgets.add(_defRow(w, d.translation!, missed: false));
+      }
+    }
+    return widgets;
+  }
+
+  Widget _defRow(String word, String definition, {required bool missed}) {
+    final theme = Theme.of(context);
+    final color = missed ? AppColors.ratingAgain : AppColors.ratingHard;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${missed ? '漏选' : '错选'} · $word',
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            definition,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ],

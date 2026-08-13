@@ -75,23 +75,27 @@ class ScheduleResult {
 /// 艾宾浩斯遗忘曲线复习算法
 ///
 /// 采用经典艾宾浩斯遗忘曲线（Ebbinghaus forgetting curve）思想：
-/// - 固定复习间隔序列 [1, 2, 4, 7, 15, 30] 天（记忆衰减最快的前期密集复习，后期拉长）
-/// - `reps` 表示复习阶段（0=新词，1=已复习一次处于 1 天间隔，2=2 天……封顶 30 天）
+/// - 固定复习间隔序列 [3h, 8h, 1d, 2d, 4d, 7d, 15d, 30d]
+///   （记忆衰减最快的前期密集复习，先小时级检测再进入天级，后期拉长）
+/// - `reps` 表示复习阶段（0=新词，1=3小时后，2=8小时后，3=1天……封顶 30 天）
 /// - `stability` 复用为"当前间隔天数"，用于遗忘曲线计算
 /// - 遗忘曲线：R(t) = e^(-t/S)，S 为当前间隔（记忆强度）
 ///
 /// 评分规则（评分驱动阶段推进 / 回退）：
-/// - 没想起来 (again) → 遗忘，lapses+1，回退到 1 天间隔
+/// - 没想起来 (again) → 遗忘，lapses+1，回退到最短间隔（3 小时）
 /// - 困难 (hard)      → 保持当前间隔不变
 /// - 正确 (good)      → 进入下一档间隔
 /// - 很轻松 (easy)    → 跳过一档，加速
 ///
-/// 状态映射：reps==0 → 新词，reps==1 → 学习中，reps>=2 → 复习中。
+/// 状态映射：reps==0 → 新词，reps 1~2 → 学习中（小时级），reps>=3 → 复习中。
 class FsrsService {
   late double _desiredRetention;
 
-  /// 艾宾浩斯复习间隔序列（天）
-  static const List<int> ebbinghausIntervals = [1, 2, 4, 7, 15, 30];
+  /// 艾宾浩斯复习间隔序列（前两项为小时级检测节点，其余为天）
+  /// 3 小时 → 8 小时 → 1 天 → 2 天 → 4 天 → 7 天 → 15 天 → 30 天
+  static const List<double> ebbinghausIntervals = [
+    3 / 24, 8 / 24, 1, 2, 4, 7, 15, 30,
+  ];
 
   FsrsService() {
     _desiredRetention = AppConstants.defaultDesiredRetention;
@@ -114,7 +118,7 @@ class FsrsService {
   double _baseIntervalDays(int reps) {
     if (reps <= 0) return 0;
     final idx = math.min(reps - 1, ebbinghausIntervals.length - 1);
-    return ebbinghausIntervals[idx].toDouble();
+    return ebbinghausIntervals[idx];
   }
 
   /// 由复习阶段计算实际间隔（含目标记忆率微调：记忆率越高间隔越短）
@@ -151,9 +155,9 @@ class FsrsService {
         lapses++;
         reps = 1;
       } else if (rating == ReviewRating.easy) {
-        reps = 2; // 首次就很轻松，跳到 2 天
+        reps = 2; // 首次就很轻松，跳到 8 小时
       } else {
-        reps = 1; // hard / good：从 1 天开始
+        reps = 1; // hard / good：从 3 小时开始
       }
     } else {
       if (rating == ReviewRating.again) {
@@ -172,8 +176,8 @@ class FsrsService {
     final interval = _intervalForReps(reps);
     final newDue = now.add(interval);
     final newStability = _baseIntervalDays(reps);
-    // reps==1 视为"学习中"（刚学第一次还不稳），reps>=2 视为"复习中"
-    final newState = reps <= 1 ? CardState.learning : CardState.review;
+    // reps 1~2 是小时级短间隔（3h/8h，学习中），reps>=3 进入天级（复习中）
+    final newState = reps <= 2 ? CardState.learning : CardState.review;
 
     final newCard = card.copyWith(
       state: newState,

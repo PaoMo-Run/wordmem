@@ -4,6 +4,7 @@ import '../database/word_dao.dart';
 import '../sources/dict_source.dart';
 import '../sources/synonym_dict_source.dart';
 import '../../domain/models/word.dart';
+import '../../domain/models/word_option.dart';
 import '../../domain/models/synonym_quiz.dart';
 import '../../domain/models/synonym_challenge.dart';
 import '../../domain/services/fsrs_service.dart';
@@ -260,18 +261,42 @@ class WordRepository {
     );
   }
 
-  /// 生成"看中文选英文单词"四选一选项（正确单词 + 随机干扰项）
-  List<String> buildWordOptions(String correctWord, int total) {
-    final allWords = _wordDao.getAll(limit: 100000).toList()..shuffle();
-    final distractors = <String>[];
-    for (final w in allWords) {
-      if (distractors.length >= total - 1) break;
-      final wWord = w['word'] as String;
-      if (wWord.toLowerCase() == correctWord.toLowerCase()) continue;
-      distractors.add(wWord);
+  /// 生成"看中文选英文单词"四选一选项（正确单词 + 词典形似干扰项）。
+  /// 每个选项携带释义，供提交后展示核对。
+  List<WordOption> buildWordOptions(String correctWord, int total,
+      {String? correctDef}) {
+    final def = (correctDef != null && correctDef.isNotEmpty)
+        ? correctDef
+        : (_dictSource.lookup(correctWord)?.translation ?? '');
+    final options = <WordOption>[
+      WordOption(word: correctWord, definition: def),
+    ];
+
+    // 优先从整个词典挑选形似干扰项（考察识别能力）
+    final similar =
+        _dictSource.lookupSimilar(correctWord, limit: total - 1);
+    for (final d in similar) {
+      if (options.length >= total) break;
+      options.add(WordOption(word: d.word, definition: d.translation ?? ''));
     }
-    final options = [correctWord, ...distractors]..shuffle();
-    return options;
+
+    // 词典形似词不足时，从个人词库随机补足
+    if (options.length < total) {
+      final allWords = _wordDao.getAll(limit: 100000).toList()..shuffle();
+      for (final w in allWords) {
+        if (options.length >= total) break;
+        final wWord = w['word'] as String;
+        if (options.any((o) => o.word.toLowerCase() == wWord.toLowerCase())) {
+          continue;
+        }
+        options.add(WordOption(
+          word: wWord,
+          definition: (w['custom_def'] as String?) ?? '',
+        ));
+      }
+    }
+
+    return options..shuffle();
   }
 
   /// 生成近义词挑战题列表（每道题：中文释义 + 8 词，含 2~4 个正确答案）

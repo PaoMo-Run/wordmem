@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../domain/models/review_rating.dart';
+import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
 import 'widgets/quiz_cards.dart';
 
@@ -32,7 +33,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   int _dictationCorrect = 0;
 
   // 四选一选项缓存（wordId -> options）
-  final Map<int, List<String>> _optionsCache = {};
+  final Map<int, List<WordOption>> _optionsCache = {};
+  // 翻卡阶段评分缓存（wordId -> 评分），用于后续阶段出错时降级
+  final Map<int, ReviewRating> _flipRatings = {};
 
   @override
   void initState() {
@@ -75,6 +78,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   void _rate(ReviewRating rating) {
     final wordId = _word['id'] as int;
+    _flipRatings[wordId] = rating; // 记录翻卡评分，供后续阶段联动
     try {
       final repo = ref.read(reviewRepositoryProvider);
       repo.submitReview(wordId, rating);
@@ -98,12 +102,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   void _enterChooseWord() {
-    // 预生成四选一选项
+    // 预生成四选一选项（含释义）
     _optionsCache.clear();
     final repo = ref.read(wordRepositoryProvider);
     for (final w in _queue) {
-      _optionsCache[w['id'] as int] =
-          repo.buildWordOptions(w['word'] as String, 4);
+      _optionsCache[w['id'] as int] = repo.buildWordOptions(
+        w['word'] as String,
+        4,
+        correctDef: (w['custom_def'] as String?) ?? '',
+      );
     }
     setState(() {
       _index = 0;
@@ -116,11 +123,16 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   //  阶段2：四选一
   // ============================================================
 
-  List<String> get _currentOptions =>
-      _optionsCache[_word['id'] as int] ?? [_currentWord];
+  List<WordOption> get _currentOptions =>
+      _optionsCache[_word['id'] as int] ??
+      [WordOption(word: _currentWord, definition: _currentDef)];
 
   void _chooseAnswered(bool correct) {
-    if (correct) _chooseCorrect++;
+    if (correct) {
+      _chooseCorrect++;
+    } else {
+      _maybeDemote(_word['id'] as int);
+    }
   }
 
   void _advanceFromChoose() {
@@ -140,7 +152,23 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   // ============================================================
 
   void _dictationAnswered(bool correct) {
-    if (correct) _dictationCorrect++;
+    if (correct) {
+      _dictationCorrect++;
+    } else {
+      _maybeDemote(_word['id'] as int);
+    }
+  }
+
+  /// 若该词在翻卡阶段被主观判为"很轻松"，但后续客观测试出错，
+  /// 则降低其熟悉度（用 again 评分回退排程）。
+  void _maybeDemote(int wordId) {
+    if (_flipRatings[wordId] != ReviewRating.easy) return;
+    try {
+      ref.read(reviewRepositoryProvider).demoteWord(wordId);
+      ref.read(wordListVersionProvider.notifier).state++;
+    } catch (_) {
+      // 降级失败不影响主流程
+    }
   }
 
   void _advanceFromDictation() {

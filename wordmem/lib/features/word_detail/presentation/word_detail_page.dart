@@ -110,7 +110,25 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
     }
   }
 
-  void _blockSynonym(String word) {
+  void _blockSynonym(String word) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('移除近义词'),
+        content: Text('确定要将 "$word" 从近义词中移除吗？\n移除后将不再推荐该词作为近义词。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('移除')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
     final repo = ref.read(wordRepositoryProvider);
     repo.blockSynonym(widget.wordId, word);
     _loadData();

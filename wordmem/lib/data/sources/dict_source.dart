@@ -104,6 +104,56 @@ class DictSource {
     return result;
   }
 
+  /// 查找形似词（编辑距离相近的干扰项），用于选单词出题。
+  /// 优先返回长度相近、拼写相近、首字母相同的词，避免与正确词同形。
+  List<DictWord> lookupSimilar(String word, {int limit = 20}) {
+    final w = word.toLowerCase();
+    final len = w.length;
+    if (w.isEmpty) return [];
+    // 按长度 ±1 粗筛，按词频 bnc 升序取一批候选
+    final rows = _d.select(
+      '''SELECT * FROM dict_words
+         WHERE length(word) BETWEEN ? AND ?
+           AND lower(word) != ?
+         ORDER BY bnc ASC LIMIT 400''',
+      [len - 1, len + 1, w],
+    );
+    final candidates = rows.map((r) => DictWord.fromMap(r)).toList();
+    // Dart 端按编辑距离排序（首字母相同优先）
+    candidates.sort((a, b) {
+      final da = _editDistance(w, a.word.toLowerCase());
+      final db = _editDistance(w, b.word.toLowerCase());
+      if (da != db) return da.compareTo(db);
+      final sa = a.word.toLowerCase().startsWith(w[0]) ? 0 : 1;
+      final sb = b.word.toLowerCase().startsWith(w[0]) ? 0 : 1;
+      return sa.compareTo(sb);
+    });
+    return candidates.take(limit).toList();
+  }
+
+  /// 编辑距离（Levenshtein）
+  static int _editDistance(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+    final prev = List<int>.generate(b.length + 1, (i) => i);
+    final curr = List<int>.filled(b.length + 1, 0);
+    for (var i = 1; i <= a.length; i++) {
+      curr[0] = i;
+      for (var j = 1; j <= b.length; j++) {
+        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+        final up = prev[j] + 1;
+        final left = curr[j - 1] + 1;
+        final diag = prev[j - 1] + cost;
+        curr[j] = up < left ? (up < diag ? up : diag) : (left < diag ? left : diag);
+      }
+      for (var j = 0; j <= b.length; j++) {
+        prev[j] = curr[j];
+      }
+    }
+    return curr[b.length];
+  }
+
   /// 词典总词数
   int get wordCount {
     final row = _d.select('SELECT COUNT(*) as c FROM dict_words').first;

@@ -1,45 +1,40 @@
-# v1.1.2 更新概览
+# v1.1.3 更新概览
 
 ## 版本信息
-- **版本**: 1.1.2+10
-- **APK**: `词记-v1.1.2-debug.apk`（165MB）
+- **版本**: 1.1.3+11
+- **APK**: `词记-v1.1.3-debug.apk`（165MB）
 - **编译状态**: 零错误零警告（18 条既有 info）
-- **Git**: 首次提交 `25fd7cc`
 
-## 本次更新（4 项）
+## 本次更新（5 项）
 
-### 1. 复习算法切换为艾宾浩斯遗忘曲线 ✅
-- 固定间隔序列 `1 / 2 / 4 / 7 / 15 / 30` 天
-- 评分驱动：忘了→回退1天 / 困难→保持 / 正确→下一档 / 轻松→跳一档
-- 遗忘曲线 R(t) = e^(-t/S)
-- 替换原 FSRS-5 公式（更直观、可预测）
+### 1. 艾宾浩斯曲线新增 3h/8h 检测节点
+- 间隔序列 `3小时 → 8小时 → 1天 → 2天 → 4天 → 7天 → 15天 → 30天`
+- 前期小时级密集检测，记忆更牢固
 
-### 2. 导入备份支持覆盖 / 续写模式 ✅
-- 覆盖：整库替换（修复 WAL 残留导致的"导入不生效"）
-- 续写：只添加当前没有的单词，保留现有数据（按 word 去重 + 外键重建）
-- 导入弹窗三选：覆盖 / 续写 / 取消
+### 2. 熟悉度联动降级
+- 翻卡阶段选"很轻松"但后续选单词/默写出错 → 自动降低该词熟悉度（回退排程）
 
-### 3. 近义词多级匹配（中文词林）✅
-- 引入哈工大同义词词林扩展版（4.5 万词条，1.1MB）
-- L1 词林义类层（解决"高兴↔愉快"同义不同字漏报）+ L2 义项重叠兜底 + 黑名单
+### 3. 选单词词典形似选项 + 显示释义
+- 干扰项从整个词典挑选形似词（编辑距离相近），考察识别能力
+- 提交后每个选项下方显示释义
 
-### 4. 翻卡 bug 修复 + 3D 动画 + 版本号 ✅
-- 修复第二词直接显示释义（卡片状态残留）
-- 翻卡改为 rotateY 3D 翻转动画
-- 关于页版本号 1.0.0 → 1.1.2
+### 4. 近义词挑战漏选/错选显示释义
+- 提交后下方显示漏选、错选单词的释义卡片
+
+### 5. 近义词删除二级确认 + 学习趋势柱状图
+- 单词卡近义词删除增加确认对话框
+- 学习趋势折线图改柱状图：左侧数量刻度 + 底部日期标签
 
 ## 修改/新增文件
 | 文件 | 变更 |
 |------|------|
-| `domain/services/fsrs_service.dart` | 艾宾浩斯算法重写 |
-| `data/repositories/backup_repository.dart` | 新增 importMerge 续写 |
-| `data/sources/synonym_dict_source.dart` | 新建，词林数据源 |
-| `data/repositories/word_repository.dart` | 近义词多级匹配 |
-| `assets/dict/synonym_cilin.json` | 词林数据（新增） |
-| `features/settings/settings_page.dart` | 导入三选 + 版本号 + 文案 |
-| `features/review/widgets/quiz_cards.dart` | 3D 翻卡动画 |
-| `core/constants/app_constants.dart` | appVersion 常量 |
-
-## 待办（后续）
-- AI 陪练（用户暂缓，接入方案已定：国产大模型直连 + key 可更新）
-- Gradle/Kotlin 版本升级预警（非阻塞）
+| `domain/services/fsrs_service.dart` | 3h/8h 节点 + state 映射 |
+| `data/repositories/review_repository.dart` | 新增 demoteWord |
+| `data/sources/dict_source.dart` | 新增 lookupSimilar 形似词 |
+| `domain/models/word_option.dart` | 新建选项模型 |
+| `data/repositories/word_repository.dart` | buildWordOptions 词典形似 |
+| `features/review/widgets/quiz_cards.dart` | 选项显示释义 |
+| `features/review/review_page.dart` | 熟悉度联动 |
+| `features/review/synonym_challenge_page.dart` | 漏选/错选释义 |
+| `features/word_detail/word_detail_page.dart` | 删除二级确认 |
+| `features/stats/stats_page.dart` | 柱状图 + Y轴 |

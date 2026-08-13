@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../domain/models/review_rating.dart';
+import '../../../../domain/models/word_option.dart';
 
 /// 统一的测验卡片组件集合
 ///
@@ -271,7 +272,7 @@ class _EnToZhCardState extends State<EnToZhCard>
 class ChooseWordCard extends StatefulWidget {
   final String word;
   final String definition;
-  final List<String> options;
+  final List<WordOption> options;
   final void Function(bool correct) onAnswered;
   final VoidCallback onNext;
   final VoidCallback onSkip;
@@ -299,7 +300,8 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final answered = _selected != null;
-    final correct = answered && widget.options[_selected!] == widget.word;
+    final correct =
+        answered && widget.options[_selected!].word == widget.word;
 
     return Center(
       child: SingleChildScrollView(
@@ -372,9 +374,9 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
   }
 
   Widget _buildOption(
-      ThemeData theme, int idx, String opt, bool answered, bool correct) {
+      ThemeData theme, int idx, WordOption opt, bool answered, bool correct) {
     final selected = _selected == idx;
-    final isCorrectOpt = opt == widget.word;
+    final isCorrectOpt = opt.word == widget.word;
 
     Color bg = Colors.transparent;
     Color border = theme.dividerColor;
@@ -394,26 +396,42 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: OutlinedButton(
-        onPressed: answered
-            ? null
-            : () {
-                setState(() => _selected = idx);
-                widget.onAnswered(opt == widget.word);
-              },
-        style: OutlinedButton.styleFrom(
-          backgroundColor: bg,
-          foregroundColor: fg,
-          side: BorderSide(
-              color: border, width: selected || isCorrectOpt ? 2 : 1),
-          minimumSize: const Size(double.infinity, 52),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: Text(
-          opt,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton(
+            onPressed: answered
+                ? null
+                : () {
+                    setState(() => _selected = idx);
+                    widget.onAnswered(opt.word == widget.word);
+                  },
+            style: OutlinedButton.styleFrom(
+              backgroundColor: bg,
+              foregroundColor: fg,
+              side: BorderSide(
+                  color: border, width: selected || isCorrectOpt ? 2 : 1),
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(
+              opt.word,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+          // 提交后显示该选项释义
+          if (answered && opt.definition.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 2),
+              child: Text(
+                opt.definition,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

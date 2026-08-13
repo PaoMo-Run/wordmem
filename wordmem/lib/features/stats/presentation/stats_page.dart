@@ -17,7 +17,6 @@ class _StatsPageState extends ConsumerState<StatsPage> {
   StreakStats? _streakStats;
   StatusDistribution? _distribution;
   List<DailyRecord> _dailyRecords = [];
-  int _selectedDays = 30;
 
   @override
   void initState() {
@@ -31,7 +30,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       setState(() {
         _streakStats = statsDao.getStreakStats();
         _distribution = statsDao.getStatusDistribution();
-        _dailyRecords = statsDao.getDailyRecords(_selectedDays);
+        _dailyRecords = statsDao.getDailyRecords(7);
       });
     } catch (e) {
       // ignore
@@ -102,17 +101,10 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                                   style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   )),
-                              SegmentedButton<int>(
-                                    segments: const [
-                                      ButtonSegment(value: 7, label: Text('7天')),
-                                      ButtonSegment(value: 30, label: Text('30天')),
-                                    ],
-                                    selected: {_selectedDays},
-                                    onSelectionChanged: (s) {
-                                      setState(() => _selectedDays = s.first);
-                                      _loadData();
-                                    },
-                                  ),
+                              Text('近 7 天',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                  )),
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -317,6 +309,9 @@ class _TrendChart extends StatelessWidget {
   final List<DailyRecord> records;
   const _TrendChart({required this.records});
 
+  static const double _chartHeight = 130.0;
+  static const double _labelHeight = 18.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -347,6 +342,7 @@ class _TrendChart extends StatelessWidget {
     final reviewColor = const Color(0xFF1E88E5);
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         // 图例
         Row(
@@ -357,22 +353,153 @@ class _TrendChart extends StatelessWidget {
             _LegendItem(color: reviewColor, label: '复习'),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
+        // 图表主体：左侧 Y 轴 + 折线图
         SizedBox(
-          height: 160,
-          width: double.infinity,
-          child: CustomPaint(
-            painter: _TrendLinePainter(
-              records: records,
-              maxValue: maxValue,
-              newColor: newColor,
-              reviewColor: reviewColor,
-            ),
+          height: _chartHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _YAxis(maxValue: maxValue),
+              const SizedBox(width: 6),
+              Expanded(
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: _TrendLinePainter(
+                    records: records,
+                    maxValue: maxValue,
+                    newColor: newColor,
+                    reviewColor: reviewColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        // 底部日期标签
+        SizedBox(
+          height: _labelHeight,
+          child: Row(
+            children: records.map((r) {
+              return Expanded(
+                child: Text(
+                  '${r.date.month}/${r.date.day}',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ),
       ],
     );
   }
+}
+
+/// Y 轴数量刻度（左侧）
+class _YAxis extends StatelessWidget {
+  final int maxValue;
+  const _YAxis({required this.maxValue});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mid = (maxValue / 2).ceil();
+    final style = theme.textTheme.labelSmall?.copyWith(
+      fontSize: 10,
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+    );
+    return SizedBox(
+      width: 28,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text('$maxValue', style: style),
+          Text('$mid', style: style),
+          Text('0', style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// 折线图绘制器
+class _TrendLinePainter extends CustomPainter {
+  final List<DailyRecord> records;
+  final int maxValue;
+  final Color newColor;
+  final Color reviewColor;
+
+  _TrendLinePainter({
+    required this.records,
+    required this.maxValue,
+    required this.newColor,
+    required this.reviewColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (records.isEmpty || maxValue <= 0) return;
+
+    const topPad = 6.0;
+    const bottomPad = 6.0;
+    final chartHeight = size.height - topPad - bottomPad;
+    if (chartHeight <= 0) return;
+
+    final stepX = records.length > 1
+        ? size.width / (records.length - 1)
+        : size.width / 2;
+    double xAt(int i) =>
+        records.length > 1 ? i * stepX : size.width / 2;
+    double yAt(int value) =>
+        topPad + chartHeight - (value / maxValue) * chartHeight;
+
+    _drawSeries(canvas, xAt, yAt, (r) => r.reviews, reviewColor);
+    _drawSeries(canvas, xAt, yAt, (r) => r.newWords, newColor);
+  }
+
+  void _drawSeries(
+    Canvas canvas,
+    double Function(int) xAt,
+    double Function(int) yAt,
+    int Function(DailyRecord) getter,
+    Color color,
+  ) {
+    if (records.isEmpty) return;
+    final path = Path();
+    for (var i = 0; i < records.length; i++) {
+      final x = xAt(i);
+      final y = yAt(getter(records[i]));
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+    final dotPaint = Paint()..color = color;
+    for (var i = 0; i < records.length; i++) {
+      final value = getter(records[i]);
+      canvas.drawCircle(Offset(xAt(i), yAt(value)), 3, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrendLinePainter old) =>
+      records != old.records || maxValue != old.maxValue;
 }
 
 class _LegendItem extends StatelessWidget {
@@ -398,83 +525,4 @@ class _LegendItem extends StatelessWidget {
       ],
     );
   }
-}
-
-/// 折线图绘制器
-class _TrendLinePainter extends CustomPainter {
-  final List<DailyRecord> records;
-  final int maxValue;
-  final Color newColor;
-  final Color reviewColor;
-
-  _TrendLinePainter({
-    required this.records,
-    required this.maxValue,
-    required this.newColor,
-    required this.reviewColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (records.isEmpty || maxValue <= 0) return;
-
-    const bottomPadding = 16.0;
-    const topPadding = 8.0;
-    final chartHeight = size.height - bottomPadding - topPadding;
-    final stepX = records.length > 1
-        ? size.width / (records.length - 1)
-        : size.width / 2;
-
-    double xAt(int i) => records.length > 1 ? i * stepX : size.width / 2;
-    double yAt(int value) =>
-        size.height - bottomPadding - (value / maxValue) * chartHeight;
-
-    _drawSeries(canvas, size, xAt, yAt, (r) => r.reviews, reviewColor);
-    _drawSeries(canvas, size, xAt, yAt, (r) => r.newWords, newColor);
-  }
-
-  void _drawSeries(
-    Canvas canvas,
-    Size size,
-    double Function(int) xAt,
-    double Function(int) yAt,
-    int Function(DailyRecord) getter,
-    Color color,
-  ) {
-    final path = Path();
-    var hasPoint = false;
-    for (var i = 0; i < records.length; i++) {
-      final value = getter(records[i]);
-      final x = xAt(i);
-      final y = yAt(value);
-      if (!hasPoint) {
-        path.moveTo(x, y);
-        hasPoint = true;
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    if (!hasPoint) return;
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // 数据点
-    final dotPaint = Paint()..color = color;
-    for (var i = 0; i < records.length; i++) {
-      final value = getter(records[i]);
-      canvas.drawCircle(Offset(xAt(i), yAt(value)), 3, dotPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _TrendLinePainter old) =>
-      records != old.records || maxValue != old.maxValue;
 }

@@ -96,4 +96,30 @@ class ReviewRepository {
   List<Map<String, dynamic>> getReviewHistory(int wordId) {
     return _reviewDao.getHistory(wordId);
   }
+
+  /// 降级单词熟悉度（翻卡主观"很轻松"但后续选单词/默写出错时调用）。
+  /// 用 again 评分重新排程（回退间隔 + 遗忘次数 +1），但不写复习历史，
+  /// 避免与正式评分记录混淆。
+  void demoteWord(int userWordId) {
+    _db.transaction(() {
+      final word = _wordDao.getById(userWordId);
+      if (word == null) return;
+      final card = FsrsCard.fromDbMap(word);
+      final now = DateTime.now().toUtc();
+      final result = _fsrs.review(card, ReviewRating.again, now);
+      final newCard = result.card;
+      _wordDao.updateCardState(
+        userWordId,
+        cardState: newCard.state.value,
+        stability: newCard.stability,
+        difficulty: newCard.difficulty,
+        reps: newCard.reps,
+        lapses: newCard.lapses,
+        due: newCard.due!.toIso8601String(),
+        lastReview: now.toIso8601String(),
+        elapsedDays: newCard.elapsedDays,
+        scheduledDays: newCard.scheduledDays,
+      );
+    });
+  }
 }

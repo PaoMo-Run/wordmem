@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../domain/models/review_rating.dart';
+import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
 import 'widgets/quiz_cards.dart';
 
@@ -35,7 +36,7 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   int _chooseCorrect = 0;
   int _dictationCorrect = 0;
 
-  final Map<int, List<String>> _optionsCache = {};
+  final Map<int, List<WordOption>> _optionsCache = {};
 
   String _rangeLabel = '';
 
@@ -108,11 +109,15 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       return;
     }
     rows.shuffle();
-    // 预生成四选一选项
+    // 预生成四选一选项（含释义）
     _optionsCache.clear();
     final repo = ref.read(wordRepositoryProvider);
     for (final w in rows) {
-      _optionsCache[w['id'] as int] = repo.buildWordOptions(w['word'] as String, 4);
+      _optionsCache[w['id'] as int] = repo.buildWordOptions(
+        w['word'] as String,
+        4,
+        correctDef: (w['custom_def'] as String?) ?? '',
+      );
     }
     setState(() {
       _queue = rows;
@@ -130,8 +135,9 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   String get _currentWord => _word['word'] as String;
   String get _currentDef => ((_word['custom_def'] as String?) ?? '').trim();
   String get _currentNote => (_word['note'] as String?) ?? '';
-  List<String> get _currentOptions =>
-      _optionsCache[_word['id'] as int] ?? [_currentWord];
+  List<WordOption> get _currentOptions =>
+      _optionsCache[_word['id'] as int] ??
+      [WordOption(word: _currentWord, definition: _currentDef)];
 
   void _toast(String msg) {
     if (!mounted) return;
