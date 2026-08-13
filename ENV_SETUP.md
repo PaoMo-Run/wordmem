@@ -189,3 +189,52 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 3. `cd wordmem && flutter pub get && flutter build apk --debug`
 
 Git 历史（`.git`）已随源码打包，解压后可直接 `git log` 查看历史；远程仓库为 `https://github.com/PaoMo-Run/wordmem`（如仍有效，可 `git remote -v` 确认）。
+
+---
+
+## 八、在 WorkBuddy 中续接项目（重装后完整步骤）
+
+### 第 1 步：解压项目到固定目录
+
+解压 `词记-wordmem-源码-v1.1.3.zip` 到一个稳定目录（建议专用开发盘，如 `D:\Projects\`）：
+
+```
+D:\Projects\词记项目\
+  ├─ wordmem\          ← Flutter 源码（实际代码在这里）
+  ├─ README.md         ← 项目说明
+  ├─ AGENTS.md         ← AI 代理项目约定（Codex 也读这个）
+  ├─ ENV_SETUP.md      ← 本文件
+  ├─ docs\             ← 设计文档
+  └─ .git\             ← 完整 git 历史
+```
+
+### 第 2 步：搭建开发环境
+
+按本文件「〇 ~ 五」章节操作：网络自检 → 国内镜像 → Flutter 3.44.9 + Android SDK + JDK 17。
+
+### 第 3 步：重建 local.properties（关键，打包时已排除）
+
+`wordmem/android/local.properties` 含本机 SDK 路径，打包时被排除。解压后**手动创建**该文件，内容：
+
+```properties
+sdk.dir=C:/Android/Sdk
+flutter.sdk=C:/flutter
+```
+
+> 路径按你实际的 Android SDK 与 Flutter 安装位置修改。
+
+### 第 4 步：在 WorkBuddy 中打开项目
+
+1. 打开 WorkBuddy，点击新建任务
+2. 点击输入框左下角的 **「选择工作空间」**，选择解压后的**项目根目录**（即包含 `wordmem/`、`README.md` 的那一层，不是 `wordmem/` 子目录）
+3. 在任务描述里说明意图，例如：
+   > 「继续开发词记（WordMem）Flutter 项目，先读 AGENTS.md 了解项目，然后跑 flutter analyze 验证环境」
+4. 可选：用 `@` 引用 `AGENTS.md` / `README.md` 作为上下文，让 AI 更快进入状态
+
+### 第 5 步：验证环境
+
+让 WorkBuddy 执行 `flutter analyze`（或 `flutter --version`），确认环境就绪后即可继续开发。
+
+---
+
+> **一句话总结重装后流程**：解压项目 → 装 Flutter/Android SDK/JDK → 重建 local.properties → WorkBuddy 里「选择工作空间」指向项目根目录 → 让 AI 读 AGENTS.md 开工。
