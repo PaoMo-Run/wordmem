@@ -57,17 +57,41 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
 ---
 
-## 一、组件清单（版本锁定）
+## 一、组件清单（版本锁定 + 推荐安装路径）
 
-| 组件 | 版本 | 原安装路径 | 说明 |
-|------|------|-----------|------|
-| Flutter SDK | **3.44.9**（stable） | `C:\flutter` | 含 Dart 3.12.2 |
-| Android SDK | platform 36 | `C:\Android\Sdk` | 含 NDK、build-tools |
+> **路径规划原则：全部装在非系统盘（以下以 `D:` 为例，可换成任意数据盘）。**
+> 注意：Gradle 缓存（`GRADLE_USER_HOME`）是**最容易被忽略的 C 盘大头**（原机器曾达 6.8G），务必用环境变量改到数据盘。
+
+| 组件 | 版本 | 推荐路径（D 盘示例） | 关键配置 |
+|------|------|--------------------|---------|
+| Flutter SDK | **3.44.9**（stable） | `D:\flutter` | 解压即可，含 Dart 3.12.2 与引擎缓存 |
+| Android SDK | platform 36 | `D:\Android\Sdk` | 含 NDK、build-tools |
 | NDK | **29.0.14206865** | SDK 内 | Flutter 指定的 NDK 版本 |
-| JDK | **17** | 随 Android Studio 或独立安装 | Gradle 8.9 需要 JDK 17 |
+| JDK | **17** | `D:\jdk-17` | Gradle 8.9 需要 JDK 17 |
 | Gradle | **8.9** | 项目 wrapper 自动下载 | 已配置镜像，见下文 |
+| **Gradle 缓存** | — | `D:\Android\.gradle` | 环境变量 `GRADLE_USER_HOME`（大头！） |
+| **pub 包缓存** | — | `D:\pub-cache` | 环境变量 `PUB_CACHE` |
 | Python | 3.13.x | 系统 | 仅用于 `scripts/` 工具脚本 |
 | Git | 最新 | 系统 | Flutter 必需 |
+
+---
+
+## 一点五、环境变量汇总（Windows 系统环境变量）
+
+在「系统属性 → 高级 → 环境变量」里配置以下变量（路径按实际盘符调整）：
+
+| 变量名 | 值（D 盘示例） | 作用 |
+|--------|--------------|------|
+| `JAVA_HOME` | `D:\jdk-17` | 指定 JDK 17 |
+| `ANDROID_HOME` | `D:\Android\Sdk` | 指定 Android SDK 位置 |
+| `GRADLE_USER_HOME` | `D:\Android\.gradle` | **Gradle 缓存（大头）移到 D 盘** |
+| `PUB_CACHE` | `D:\pub-cache` | pub 包缓存移到 D 盘 |
+| `Path`（追加） | `D:\flutter\bin` | 让 `flutter` 命令全局可用 |
+| `Path`（追加） | `D:\jdk-17\bin` | 让 `java`/`javac` 可用 |
+| （可选）`PUB_HOSTED_URL` | `https://pub.flutter-io.cn` | pub 国内镜像 |
+| （可选）`FLUTTER_STORAGE_BASE_URL` | `https://storage.flutter-io.cn` | Flutter 下载国内镜像 |
+
+> 配置后**重开终端**（或重启）让环境变量生效。
 
 ---
 
@@ -76,37 +100,43 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 ### 1. Flutter SDK
 
 ```bash
-# 下载 stable 版 Flutter，解压到 C:\flutter（务必用稳定版）
-git clone -b stable https://github.com/flutter/flutter.git C:\flutter
-# 或从官网下载 zip 解压
+# 下载 stable 版 Flutter，解压到 D:\flutter（务必用稳定版，放在非系统盘）
+git clone -b stable https://github.com/flutter/flutter.git D:\flutter
+# 或从官网下载 zip 解压到 D:\flutter
 
-# 验证
+# 验证（需已把 D:\flutter\bin 加入 Path）
 flutter --version   # 应显示 Flutter 3.44.9 / Dart 3.12.2
 ```
 
+> Flutter SDK 目录本身会包含它下载的 Dart SDK 和引擎缓存（都在 `D:\flutter\bin\cache`），所以装在 D 盘后这些也自动在 D 盘。
+>
 > 若无法访问 GitHub，可用国内镜像：设置环境变量 `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`、`PUB_HOSTED_URL=https://pub.flutter-io.cn`，或使用 Gitee 镜像的 Flutter SDK。
 
 ### 2. Android SDK + NDK
 
-推荐通过 Android Studio 安装（SDK Manager），或命令行：
+**方式 A（推荐，免装 Android Studio）——命令行工具，SDK 直接放 D 盘：**
 
 ```bash
-# 通过 sdkmanager 安装（需先装 command-line tools）
+# 1. 下载 command-line tools，解压到 D:\Android\Sdk\cmdline-tools\latest
+# 2. 设置 ANDROID_HOME=D:\Android\Sdk
+# 3. 用 sdkmanager 安装所需组件（自动下载到 D:\Android\Sdk）
 sdkmanager "platforms;android-36" "build-tools;34.0.0" "ndk;29.0.14206865" "platform-tools"
 ```
+
+**方式 B——装 Android Studio：** 安装时可选择安装目录；SDK 位置在首次启动时手动指定到 `D:\Android\Sdk`（SDK Manager 的 SDK Location 可改）。
 
 在项目 `wordmem/android/local.properties` 中指定路径：
 
 ```properties
-sdk.dir=C:/Android/Sdk
-flutter.sdk=C:/flutter
+sdk.dir=D:/Android/Sdk
+flutter.sdk=D:/flutter
 ```
 
-> 原项目 `local.properties` 不纳入版本控制（gitignore），重装后需按上述格式重建。
+> 原项目 `local.properties` 不纳入版本控制（gitignore），重装后需按上述格式重建，**路径务必与实际盘符一致**。
 
 ### 3. JDK 17
 
-安装 OpenJDK 17 或 JDK 17，确保 `JAVA_HOME` 指向 JDK 17。Gradle 8.9 与 AGP 8.7.0 要求 JDK 17。
+下载 OpenJDK 17 的 **zip 免安装版**，解压到 `D:\jdk-17`（而非安装到 C 盘），然后设 `JAVA_HOME=D:\jdk-17`。Gradle 8.9 与 AGP 8.7.0 要求 JDK 17。
 
 ---
 
@@ -217,11 +247,11 @@ D:\Projects\词记项目\
 `wordmem/android/local.properties` 含本机 SDK 路径，打包时被排除。解压后**手动创建**该文件，内容：
 
 ```properties
-sdk.dir=C:/Android/Sdk
-flutter.sdk=C:/flutter
+sdk.dir=D:/Android/Sdk
+flutter.sdk=D:/flutter
 ```
 
-> 路径按你实际的 Android SDK 与 Flutter 安装位置修改。
+> 路径按你实际的 Android SDK 与 Flutter 安装位置修改（上例为 D 盘方案）。
 
 ### 第 4 步：在 WorkBuddy 中打开项目
 
