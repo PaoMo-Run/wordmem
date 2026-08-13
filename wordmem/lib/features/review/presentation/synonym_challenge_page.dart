@@ -1,0 +1,325 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/empty_state.dart';
+import '../../../domain/models/synonym_challenge.dart';
+import '../../../core/theme/colors.dart';
+
+/// 近义词挑战页面
+///
+/// 每道题：上方中文释义，下方 8 个单词（2~4 个正确近义词）。
+/// 用户至少选出 2 个正确答案即为通过。支持跳过。
+class SynonymChallengePage extends ConsumerStatefulWidget {
+  const SynonymChallengePage({super.key});
+
+  @override
+  ConsumerState<SynonymChallengePage> createState() =>
+      _SynonymChallengePageState();
+}
+
+class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
+  List<SynonymChallenge> _challenges = [];
+  int _index = 0;
+  int _passed = 0;
+  bool _loading = true;
+  bool _finished = false;
+
+  final Set<String> _selected = {};
+  bool _submitted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    Future.microtask(() {
+      final repo = ref.read(wordRepositoryProvider);
+      final challenges = repo.buildSynonymChallenges(count: 10);
+      if (!mounted) return;
+      setState(() {
+        _challenges = challenges;
+        _loading = false;
+      });
+    });
+  }
+
+  SynonymChallenge get _challenge => _challenges[_index];
+
+  void _toggle(String word) {
+    if (_submitted) return;
+    setState(() {
+      if (_selected.contains(word)) {
+        _selected.remove(word);
+      } else {
+        _selected.add(word);
+      }
+    });
+  }
+
+  int get _correctSelected =>
+      _selected.where((w) => _challenge.correct.contains(w)).length;
+  bool get _passedCurrent => _correctSelected >= 2;
+
+  void _submit() {
+    setState(() {
+      _submitted = true;
+      if (_passedCurrent) _passed++;
+    });
+  }
+
+  void _next() {
+    if (_index < _challenges.length - 1) {
+      setState(() {
+        _index++;
+        _selected.clear();
+        _submitted = false;
+      });
+    } else {
+      setState(() => _finished = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('近义词挑战')),
+        body: const LoadingIndicator(message: '生成挑战题目...'),
+      );
+    }
+    if (_finished) return _buildResult();
+    if (_challenges.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('近义词挑战'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: const EmptyState(
+          icon: Icons.hub_outlined,
+          title: '暂无可挑战的近义词',
+          subtitle: '词库中近义词不足，请先添加更多单词',
+        ),
+      );
+    }
+    return _buildQuiz();
+  }
+
+  Widget _buildQuiz() {
+    final theme = Theme.of(context);
+    final challenge = _challenge;
+    final total = _challenges.length;
+    final progress = _index / total;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('近义词挑战 ${_index + 1} / $total'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: Column(
+        children: [
+          LinearProgressIndicator(value: progress, minHeight: 3),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '选出与下列释义对应的近义词（至少选 2 个）',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  // 释义
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer
+                          .withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      challenge.definition,
+                      style: theme.textTheme.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // 8 个单词选项
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: challenge.options.map((word) {
+                      return _buildOptionChip(theme, word, challenge);
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_submitted) ...[
+                    Text(
+                      _passedCurrent
+                          ? '通过！选对 $_correctSelected 个近义词'
+                          : '未通过（至少需选 2 个，当前选对 $_correctSelected 个）',
+                      style: TextStyle(
+                        color: _passedCurrent
+                            ? AppColors.ratingGood
+                            : AppColors.ratingAgain,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _next,
+                        child: Text(
+                          _index < total - 1 ? '下一题' : '完成',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ] else
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _selected.length >= 2 ? _submit : null,
+                        child: Text(
+                          _selected.length >= 2
+                              ? '提交（已选 ${_selected.length} 个）'
+                              : '至少选择 2 个单词',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _next,
+                    icon: const Icon(Icons.skip_next, size: 18),
+                    label: const Text('跳过'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOptionChip(
+      ThemeData theme, String word, SynonymChallenge challenge) {
+    final selected = _selected.contains(word);
+    final isCorrect = challenge.correct.contains(word);
+
+    Color? bg;
+    Color? border;
+    Color fg = theme.colorScheme.onSurface;
+
+    if (_submitted) {
+      if (isCorrect) {
+        bg = AppColors.ratingGood.withValues(alpha: 0.15);
+        border = AppColors.ratingGood;
+        fg = AppColors.ratingGood;
+      } else if (selected) {
+        bg = AppColors.ratingAgain.withValues(alpha: 0.15);
+        border = AppColors.ratingAgain;
+        fg = AppColors.ratingAgain;
+      }
+    } else if (selected) {
+      bg = theme.colorScheme.primaryContainer.withValues(alpha: 0.4);
+      border = theme.colorScheme.primary;
+      fg = theme.colorScheme.primary;
+    }
+
+    return InkWell(
+      onTap: _submitted ? null : () => _toggle(word),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: border ?? theme.dividerColor, width: 1.5),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          word,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: fg),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResult() {
+    final theme = Theme.of(context);
+    final total = _challenges.length;
+    final percent = total > 0 ? (_passed * 100 ~/ total) : 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('挑战完成'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                percent >= 60 ? Icons.emoji_events : Icons.hub_outlined,
+                size: 72,
+                color: percent >= 60 ? AppColors.ratingEasy : theme.colorScheme.outline,
+              ),
+              const SizedBox(height: 16),
+              Text('近义词挑战完成',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  )),
+              const SizedBox(height: 8),
+              Text(
+                '通过 $_passed / $total 题',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '通过率 $percent%',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: percent >= 60 ? AppColors.ratingGood : AppColors.ratingAgain,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('完成',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

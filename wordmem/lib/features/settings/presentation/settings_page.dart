@@ -1,0 +1,295 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import '../../../shared/providers/app_providers.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../data/repositories/backup_repository.dart';
+
+/// 设置页面
+class SettingsPage extends ConsumerStatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final retention = ref.watch(desiredRetentionProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final reminderEnabled = ref.watch(reminderEnabledProvider);
+    final reminderHour = ref.watch(reminderHourProvider);
+    final reminderMinute = ref.watch(reminderMinuteProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('设置')),
+      body: ListView(
+        children: [
+          // 复习设置
+          _SectionHeader('复习设置'),
+          ListTile(
+            leading: const Icon(Icons.psychology_outlined),
+            title: const Text('目标记忆率'),
+            subtitle: Text('${(retention * 100).toStringAsFixed(0)}%'),
+            trailing: SizedBox(
+              width: 180,
+              child: Slider(
+                value: retention,
+                min: AppConstants.minDesiredRetention,
+                max: AppConstants.maxDesiredRetention,
+                divisions: 15,
+                label: '${(retention * 100).round()}%',
+                onChanged: (v) => ref.read(desiredRetentionProvider.notifier).set(v),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '目标记忆率越高，复习间隔越短，复习频率越高。范围 80%-95%。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+
+          const Divider(),
+
+          // 提醒设置
+          _SectionHeader('提醒设置'),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('每日提醒'),
+            subtitle: Text(reminderEnabled
+                ? '每天 ${reminderHour.toString().padLeft(2, '0')}:${reminderMinute.toString().padLeft(2, '0')} 提醒'
+                : '已关闭'),
+            value: reminderEnabled,
+            onChanged: (v) async {
+              ref.read(reminderEnabledProvider.notifier).set(v);
+              if (v) {
+                final notif = ref.read(notificationServiceProvider);
+                await notif.init();
+                final granted = await notif.requestPermissions();
+                if (granted) {
+                  final reviewRepo = ref.read(reviewRepositoryProvider);
+                  final pending = reviewRepo.pendingCount;
+                  await notif.scheduleDailyReminder(
+                    hour: reminderHour,
+                    minute: reminderMinute,
+                    pendingCount: pending,
+                  );
+                }
+              } else {
+                final notif = ref.read(notificationServiceProvider);
+                await notif.cancelAll();
+              }
+            },
+          ),
+          if (reminderEnabled)
+            ListTile(
+              leading: const SizedBox(width: 24),
+              title: const Text('提醒时间'),
+              trailing: TextButton(
+                onPressed: () async {
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay(hour: reminderHour, minute: reminderMinute),
+                  );
+                  if (time != null) {
+                    ref.read(reminderHourProvider.notifier).set(time.hour);
+                    ref.read(reminderMinuteProvider.notifier).set(time.minute);
+                    final notif = ref.read(notificationServiceProvider);
+                    final reviewRepo = ref.read(reviewRepositoryProvider);
+                    final pending = reviewRepo.pendingCount;
+                    await notif.scheduleDailyReminder(
+                      hour: time.hour,
+                      minute: time.minute,
+                      pendingCount: pending,
+                    );
+                  }
+                },
+                child: Text(
+                  '${reminderHour.toString().padLeft(2, '0')}:${reminderMinute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+
+          const Divider(),
+
+          // 外观
+          _SectionHeader('外观'),
+          ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: const Text('主题模式'),
+            trailing: SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.auto_mode)),
+                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_outlined)),
+                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_outlined)),
+              ],
+              selected: {themeMode},
+              onSelectionChanged: (s) =>
+                  ref.read(themeModeProvider.notifier).set(s.first),
+            ),
+          ),
+
+          const Divider(),
+
+          // 数据管理
+          _SectionHeader('数据管理'),
+          ListTile(
+            leading: const Icon(Icons.upload_outlined),
+            title: const Text('导出备份'),
+            subtitle: const Text('导出词库和复习记录为 zip 文件'),
+            onTap: () async {
+              try {
+                final repo = ref.read(backupRepositoryProvider);
+                // 1. 生成备份 zip 字节
+                final bytes = await repo.exportBytes();
+
+                // 2. 让用户选择保存位置（Android/iOS 需传 bytes 由系统写入）
+                final now = DateTime.now();
+                final savePath = await FilePicker.platform.saveFile(
+                  dialogTitle: '选择备份保存位置',
+                  fileName: BackupRepository.defaultFileName(now),
+                  type: FileType.custom,
+                  allowedExtensions: ['zip'],
+                  bytes: bytes,
+                );
+                if (savePath == null) return; // 用户取消选择
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('备份已导出')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('导出失败: $e')),
+                  );
+                }
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('导入备份'),
+            subtitle: const Text('从 zip 文件恢复词库（覆盖或续写）'),
+            onTap: () async {
+              final result = await FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: ['zip'],
+              );
+              if (result == null || result.files.single.path == null) return;
+
+              // 选择导入模式：覆盖 / 续写 / 取消
+              final mode = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('导入备份'),
+                  content: const Text('请选择导入方式：\n\n覆盖：用备份完全替换当前词库\n续写：只添加当前没有的单词，保留现有数据'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('取消')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, 'merge'),
+                        child: const Text('续写')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, 'overwrite'),
+                        child: const Text('覆盖')),
+                  ],
+                ),
+              );
+              if (mode == null) return;
+
+              try {
+                final repo = ref.read(backupRepositoryProvider);
+                final isOverwrite = mode == 'overwrite';
+                final importResult = isOverwrite
+                    ? await repo.import(result.files.single.path!)
+                    : await repo.importMerge(result.files.single.path!);
+                if (importResult.success) {
+                  // 触发词库刷新信号，让词库/今日页立即重载
+                  ref.read(wordListVersionProvider.notifier).state++;
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(
+                      importResult.success
+                          ? (isOverwrite
+                              ? '导入成功: ${importResult.wordCount} 个单词'
+                              : '续写成功: 新增 ${importResult.wordCount} 词，跳过 ${importResult.skippedCount ?? 0} 词')
+                          : '导入失败: ${importResult.error}',
+                    )),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('导入失败: $e')),
+                  );
+                }
+              }
+            },
+          ),
+
+          const Divider(),
+
+          // 词典信息
+          _SectionHeader('词典信息'),
+          ListTile(
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('内置词典'),
+            subtitle: Text('ECDICT 精简版\n版本: ${AppConstants.dictVersion}\n词条数: ${AppConstants.dictWordCount}'),
+          ),
+
+          const Divider(),
+
+          // 关于
+          _SectionHeader('关于'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('词记'),
+            subtitle: Text('版本 ${AppConstants.appVersion}\n离线英语词库与间隔复习'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('隐私'),
+            subtitle: const Text('本应用完全离线，不请求网络权限，不收集任何数据。'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('复习算法'),
+            subtitle: Text('基于艾宾浩斯遗忘曲线\n复习间隔 1/2/4/7/15/30 天'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,23 @@
+# ===== Flutter / Dart =====
+wordmem/build/
+wordmem/.dart_tool/
+wordmem/android/.gradle/
+wordmem/android/app/build/
+wordmem/.idea/
+wordmem/android/local.properties
+wordmem/android/key.properties
+wordmem/*.iml
+*.iml
+
+# ===== 编译产物（大文件，不纳入版本控制）=====
+*.apk
+*.aab
+*.zip
+
+# ===== 临时文件 =====
+*.tmp
+*.tmp.*
+*_tmp.db
+*.bak
+.DS_Store
+Thumbs.db

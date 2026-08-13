@@ -1,0 +1,249 @@
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
+import '../../core/constants/app_constants.dart';
+
+/// 数据库连接管理器
+/// 管理两个 SQLite 数据库：词典(只读) + 个人词库(可写)
+class AppDatabase {
+  late Database _vocabDb;
+  late Database _dictDb;
+
+  Database get vocab => _vocabDb;
+  Database get dict => _dictDb;
+
+  bool _initialized = false;
+  bool get isInitialized => _initialized;
+
+  /// 读取版本标记文件内容（不存在返回 null）
+  String? _readVersion(String path) {
+    try {
+      final f = File(path);
+      if (!f.existsSync()) return null;
+      return f.readAsStringSync().trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 初始化数据库
+  Future<void> init() async {
+    if (_initialized) return;
+
+    final docDir = await getApplicationDocumentsDirectory();
+
+    // 1. 词典数据库：从 assets 复制到文档目录（带版本检查）
+    //    覆盖安装时，旧词典文件仍在文档目录，若不检查版本会一直用旧词典。
+    //    用 .version 标记文件记录已复制的词典版本，版本不一致时强制重新复制。
+    final dictPath = p.join(docDir.path, AppConstants.dictDbName);
+    final dictVersionPath = p.join(docDir.path, '${AppConstants.dictDbName}.version');
+    final needCopy = !File(dictPath).existsSync() ||
+        _readVersion(dictVersionPath) != AppConstants.dictVersion;
+    if (needCopy) {
+      final data = await rootBundle.load('assets/dict/${AppConstants.dictDbName}');
+      final bytes = data.buffer.asUint8List();
+      await File(dictPath).writeAsBytes(bytes);
+      await File(dictVersionPath).writeAsString(AppConstants.dictVersion);
+    }
+    _dictDb = sqlite3.open(dictPath);
+
+    // 2. 个人词库数据库
+    final vocabPath = p.join(docDir.path, AppConstants.vocabDbName);
+    _vocabDb = sqlite3.open(vocabPath);
+
+    // 3. 设置 PRAGMA
+    _vocabDb.execute('PRAGMA journal_mode=WAL;');
+    _vocabDb.execute('PRAGMA synchronous=NORMAL;');
+    _vocabDb.execute('PRAGMA foreign_keys=ON;');
+    _vocabDb.execute('PRAGMA temp_store=MEMORY;');
+
+    // 4. 创建表结构
+    _createSchema();
+
+    // 5. 初始化默认数据
+    _initDefaultData();
+
+    // 6. 完整性检查
+    _verifyIntegrity();
+
+    _initialized = true;
+  }
+
+  void _createSchema() {
+    _vocabDb.execute('''
+CREATE TABLE IF NOT EXISTS user_words (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  word            TEXT NOT NULL,
+  sense_id        INTEGER DEFAULT 0,
+  custom_def      TEXT,
+  note            TEXT DEFAULT '',
+  tags            TEXT DEFAULT '',
+  is_favorite     INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  card_state      TEXT NOT NULL DEFAULT 'new',
+  stability       REAL DEFAULT 0,
+  difficulty      REAL DEFAULT 0,
+  reps            INTEGER NOT NULL DEFAULT 0,
+  lapses          INTEGER NOT NULL DEFAULT 0,
+  due             TEXT NOT NULL,
+  last_review     TEXT,
+  elapsed_days    REAL DEFAULT 0,
+  scheduled_days  REAL DEFAULT 0
+);
+''');
+
+    _vocabDb.execute('''
+CREATE TABLE IF NOT EXISTS review_logs (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_word_id    INTEGER NOT NULL,
+  rating          INTEGER NOT NULL,
+  state           TEXT NOT NULL,
+  elapsed_days    REAL,
+  scheduled_days  REAL,
+  reviewed_at     TEXT NOT NULL,
+  FOREIGN KEY (user_word_id) REFERENCES user_words(id) ON DELETE CASCADE
+);
+''');
+
+    _vocabDb.execute('''
+CREATE TABLE IF NOT EXISTS fsrs_params (
+  id                INTEGER PRIMARY KEY DEFAULT 1,
+  parameters        TEXT NOT NULL,
+  desired_retention REAL NOT NULL DEFAULT 0.9,
+  optimized_at      TEXT,
+  review_count      INTEGER DEFAULT 0,
+  is_active         INTEGER NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL
+);
+''');
+
+    _vocabDb.execute('''
+CREATE TABLE IF NOT EXISTS app_settings (
+  key             TEXT PRIMARY KEY,
+  value           TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+''');
+
+    // 索引
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_uw_due ON user_words(due);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_uw_state ON user_words(card_state);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_uw_created ON user_words(created_at);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_uw_fav ON user_words(is_favorite);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_uw_tags ON user_words(tags);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_rl_word ON review_logs(user_word_id);');
+    _vocabDb.execute('CREATE INDEX IF NOT EXISTS idx_rl_time ON review_logs(reviewed_at);');
+
+    // FTS5 虚拟表
+    _vocabDb.execute('''
+CREATE VIRTUAL TABLE IF NOT EXISTS user_words_fts USING fts5(
+  word, custom_def, note, tags,
+  content='user_words', content_rowid='id',
+  tokenize='unicode61 remove_diacritics 2'
+);
+''');
+
+    // FTS5 触发器
+    _vocabDb.execute('''
+CREATE TRIGGER IF NOT EXISTS user_words_ai AFTER INSERT ON user_words BEGIN
+  INSERT INTO user_words_fts(rowid, word, custom_def, note, tags)
+  VALUES (new.id, new.word, new.custom_def, new.note, new.tags);
+END;
+''');
+    _vocabDb.execute('''
+CREATE TRIGGER IF NOT EXISTS user_words_ad AFTER DELETE ON user_words BEGIN
+  INSERT INTO user_words_fts(user_words_fts, rowid, word, custom_def, note, tags)
+  VALUES ('delete', old.id, old.word, old.custom_def, old.note, old.tags);
+END;
+''');
+    _vocabDb.execute('''
+CREATE TRIGGER IF NOT EXISTS user_words_au AFTER UPDATE ON user_words BEGIN
+  INSERT INTO user_words_fts(user_words_fts, rowid, word, custom_def, note, tags)
+  VALUES ('delete', old.id, old.word, old.custom_def, old.note, old.tags);
+  INSERT INTO user_words_fts(rowid, word, custom_def, note, tags)
+  VALUES (new.id, new.word, new.custom_def, new.note, new.tags);
+END;
+''');
+  }
+
+  void _initDefaultData() {
+    final now = DateTime.now().toUtc().toIso8601String();
+    // 默认 FSRS 参数
+    final count = _vocabDb
+        .select('SELECT COUNT(*) as c FROM fsrs_params WHERE id = 1')
+        .first['c'] as int;
+    if (count == 0) {
+      _vocabDb.execute(
+        'INSERT INTO fsrs_params (id, parameters, desired_retention, is_active, updated_at) VALUES (1, ?, 0.9, 0, ?)',
+        [AppConstants.defaultFsrsParams.join(','), now],
+      );
+    }
+  }
+
+  void _verifyIntegrity() {
+    final result = _vocabDb.select('PRAGMA quick_check;').first;
+    if (result['quick_check'] != 'ok') {
+      throw Exception('数据库损坏: ${result['quick_check']}');
+    }
+  }
+
+  /// 事务执行
+  void transaction(void Function() action) {
+    _vocabDb.execute('BEGIN;');
+    try {
+      action();
+      _vocabDb.execute('COMMIT;');
+    } catch (e) {
+      _vocabDb.execute('ROLLBACK;');
+      rethrow;
+    }
+  }
+
+  /// WAL checkpoint
+  void walCheckpoint() {
+    _vocabDb.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+  }
+
+  /// 获取数据库文件路径
+  Future<String> get vocabDbPath async {
+    final docDir = await getApplicationDocumentsDirectory();
+    return p.join(docDir.path, AppConstants.vocabDbName);
+  }
+
+  /// 关闭
+  void close() {
+    try {
+      _vocabDb.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (_) {}
+    _vocabDb.dispose();
+    _dictDb.dispose();
+    _initialized = false;
+  }
+
+  /// 关闭连接并清理 WAL 残留文件（供导入覆盖数据库文件前调用）。
+  ///
+  /// 根因修复：WAL 模式下残留 vocabulary.db-wal / -shm 文件，
+  /// 直接覆盖主 db 后重新 open 会回放旧日志导致数据错乱。
+  /// 因此覆盖前必须先 checkpoint 并删除残留的 -wal / -shm。
+  Future<void> closeForReplace() async {
+    try {
+      _vocabDb.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+    } catch (_) {}
+    _vocabDb.dispose();
+    _dictDb.dispose();
+    _initialized = false;
+
+    final path = await vocabDbPath;
+    for (final suffix in const ['-wal', '-shm']) {
+      final f = File('$path$suffix');
+      if (f.existsSync()) {
+        try {
+          f.deleteSync();
+        } catch (_) {}
+      }
+    }
+  }
+}
