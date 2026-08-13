@@ -1,24 +1,45 @@
-# 100 词测试数据包生成
+# v1.1.2 更新概览
 
-## 任务
-把词记 App 的测试数据包从 44 词扩展到 **100 词**，用于验证近义词检测、三段式复习、自选复习、统计折线图等核心功能。
+## 版本信息
+- **版本**: 1.1.2+10
+- **APK**: `词记-v1.1.2-debug.apk`（165MB）
+- **编译状态**: 零错误零警告（18 条既有 info）
+- **Git**: 首次提交 `25fd7cc`
 
-## 产出
-- **文件**: `词记测试数据包-100词.zip`（项目根目录）
-- **结构**: manifest.json + vocabulary.db + fsrs_params.json（sha256 精确匹配，校验通过）
+## 本次更新（4 项）
 
-## 数据分布
-| 维度 | 分布 |
+### 1. 复习算法切换为艾宾浩斯遗忘曲线 ✅
+- 固定间隔序列 `1 / 2 / 4 / 7 / 15 / 30` 天
+- 评分驱动：忘了→回退1天 / 困难→保持 / 正确→下一档 / 轻松→跳一档
+- 遗忘曲线 R(t) = e^(-t/S)
+- 替换原 FSRS-5 公式（更直观、可预测）
+
+### 2. 导入备份支持覆盖 / 续写模式 ✅
+- 覆盖：整库替换（修复 WAL 残留导致的"导入不生效"）
+- 续写：只添加当前没有的单词，保留现有数据（按 word 去重 + 外键重建）
+- 导入弹窗三选：覆盖 / 续写 / 取消
+
+### 3. 近义词多级匹配（中文词林）✅
+- 引入哈工大同义词词林扩展版（4.5 万词条，1.1MB）
+- L1 词林义类层（解决"高兴↔愉快"同义不同字漏报）+ L2 义项重叠兜底 + 黑名单
+
+### 4. 翻卡 bug 修复 + 3D 动画 + 版本号 ✅
+- 修复第二词直接显示释义（卡片状态残留）
+- 翻卡改为 rotateY 3D 翻转动画
+- 关于页版本号 1.0.0 → 1.1.2
+
+## 修改/新增文件
+| 文件 | 变更 |
 |------|------|
-| 单词数 | 100 |
-| 复习记录 | 159 条 |
-| 状态 | review 41 / learning 26 / new 33 |
-| 近义词组 | 26 组（10 组原有 + 16 组新增） |
-| 标签 | CET-4 / CET-6 / 考研 / 雅思 / 托福 / GRE |
-| 日期跨度 | 近 30 天（测试自选复习 + 折线图） |
+| `domain/services/fsrs_service.dart` | 艾宾浩斯算法重写 |
+| `data/repositories/backup_repository.dart` | 新增 importMerge 续写 |
+| `data/sources/synonym_dict_source.dart` | 新建，词林数据源 |
+| `data/repositories/word_repository.dart` | 近义词多级匹配 |
+| `assets/dict/synonym_cilin.json` | 词林数据（新增） |
+| `features/settings/settings_page.dart` | 导入三选 + 版本号 + 文案 |
+| `features/review/widgets/quiz_cards.dart` | 3D 翻卡动画 |
+| `core/constants/app_constants.dart` | appVersion 常量 |
 
-## 变更
-- `scripts/make_test_backup.py`：WORDS 列表扩充、输出文件名改为 `词记测试数据包-100词.zip`、main() 增加状态分布统计输出
-
-## 导入方式
-设置 → 数据管理 → 导入备份 → 选择该 zip
+## 待办（后续）
+- AI 陪练（用户暂缓，接入方案已定：国产大模型直连 + key 可更新）
+- Gradle/Kotlin 版本升级预警（非阻塞）
