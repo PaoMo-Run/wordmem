@@ -268,3 +268,46 @@ flutter.sdk=D:/flutter
 ---
 
 > **一句话总结重装后流程**：解压项目 → 装 Flutter/Android SDK/JDK → 重建 local.properties → WorkBuddy 里「选择工作空间」指向项目根目录 → 让 AI 读 AGENTS.md 开工。
+
+---
+
+## 九、附录：C 盘空间占用全景与「零 C 盘」方案
+
+### 谁在吃 C 盘空间（关键认知）
+
+之前 C 盘 30G 膨胀的**元凶是「编译缓存 + 构建产物」，不是 agent 配置**。分清大头和小头：
+
+| 占用点 | 默认位置 | 规模 | 是否大头 | 规避方式 |
+|--------|---------|------|---------|---------|
+| Gradle 缓存 | `~\.gradle` | ~6.8G | 🔴 大头 | `GRADLE_USER_HOME` → D 盘 |
+| Android SDK | （可自选） | ~7.5G | 🔴 大头 | 装到 `D:\Android\Sdk` |
+| Flutter 构建产物 | 项目 `build/` | ~2.4G/次 | 🔴 大头 | 项目放 D 盘 |
+| Flutter SDK | （可自选） | ~757M | 🟡 中 | 装到 `D:\flutter` |
+| pub 包缓存 | `%LOCALAPPDATA%\Pub\Cache` | ~251M | 🟡 中 | `PUB_CACHE` → D 盘 |
+| WorkBuddy 工作区 | `~\WorkBuddy\<时间戳>` | 含编译产物 | 🔴 大头 | 「选择工作空间」→ D 盘 |
+| WorkBuddy 数据 | `~\.workbuddy` | 运行时+配置 | 🟢 小 | 见下方「目录联接」 |
+| Dart 遥测/缓存 | `%APPDATA%\.dart-tool` | 很小 | 🟢 小 | 可忽略 |
+| Codex / Claude 配置 | `~\.codex`、`~\.claude` | 文本配置+历史 | 🟢 小 | 见下方「目录联接」 |
+
+**结论**：🔴 大头（约 17G）全部能通过环境变量 / 安装路径 / 工作区选择改到 D 盘；🟢 小头（agent 配置，几百 MB 级）即使留在 C 盘也无伤大雅。
+
+### 进阶：用 Windows 目录联接把 agent 数据也移出 C 盘
+
+若想彻底做到「零 C 盘」，可用 Windows 原生 **目录联接（Junction）**，把 agent 数据目录「重定向」到 D 盘，对应用程序完全透明：
+
+```cmd
+# 以 WorkBuddy 数据目录为例（管理员 CMD 执行）
+# 1. 移动原目录到 D 盘
+move C:\Users\<用户名>\.workbuddy D:\.workbuddy
+# 2. 在 C 盘原位置创建联接（应用程序以为数据还在 C 盘，实际存 D 盘）
+mklink /J C:\Users\<用户名>\.workbuddy D:\.workbuddy
+```
+
+> 同理可应用于 `~\.codex`、`~\.claude` 等任何 agent 配置目录。
+> 注意：`mklink /J` 只对「目录」有效；移动前先关闭对应软件。此法是 Windows 通用能力，不依赖特定软件是否提供「改路径」设置。
+
+### 建议的「零 C 盘」落地顺序
+
+1. **大头全移 D 盘**（环境变量 + 安装路径，见「一点五」和「二」）—— 这一步解决 95% 的空间问题
+2. **项目 + 工作区放 D 盘**（解压到 `D:\Projects`，WorkBuddy 选工作空间指 D 盘）—— 编译产物不再进 C 盘
+3. **（可选）** 用 `mklink /J` 把 `~\.workbuddy` 等 agent 数据目录也联接到 D 盘 —— 彻底清零
