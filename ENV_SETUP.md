@@ -5,6 +5,58 @@
 
 ---
 
+## 〇、第一步：网络环境自检（重要，先做）
+
+> **核心结论：本项目编译不依赖代理（Clash），走国内镜像直连即可。**
+> 之前反复出现的「编译卡死 / Gradle 下载失败」根因是「系统配置了 `127.0.0.1:7890` 代理但代理没运行」，而非「没有代理」。
+
+### 决策流程
+
+```
+重装后网络是干净的（无代理）
+        │
+        ├─ 只编译本项目 ──> 无需装 Clash，直接走国内镜像（见下）
+        │                     ✓ 项目已内置：Gradle 腾讯云镜像 + 阿里云 Maven + 禁用系统代理
+        │
+        ├─ 需要访问 GitHub（clone/push）──> 可选装 Clash
+        │
+        └─ 装了 Clash 但可能不常开 ──> 也安全：项目已用 -Djava.net.useSystemProxies=false 规避
+```
+
+### 自检命令
+
+```bash
+# 1. 检查是否残留代理环境变量（重装后应为空，若装了 Clash 会有）
+env | grep -i proxy
+
+# 2. 直连国内镜像是否可达（应返回 200）
+curl --noproxy "*" -sI https://maven.aliyun.com/repository/central | head -1
+curl --noproxy "*" -sI https://mirrors.cloud.tencent.com/gradle/gradle-8.9-all.zip | head -1
+```
+
+### Flutter/Dart 国内镜像（可选，加速 pub get 和 SDK 下载）
+
+```bash
+# 永久设置（Windows 系统环境变量）
+FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+PUB_HOSTED_URL=https://pub.flutter-io.cn
+
+# 或临时（当前会话）
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+```
+
+> 项目内的 Gradle 镜像（`android/gradle-wrapper.properties`、`settings.gradle`、`build.gradle`、`gradle.properties`）**已经配好**，重装后无需改动。
+
+### 关键原则
+
+1. **编译 ≠ 需要 Clash**。所有依赖都有国内镜像，直连即可。
+2. **Clash 仅用于 GitHub/Google 等站点**，与编译无关。
+3. **最危险的状态是「代理配了但没开」**，本项目已通过「禁用系统代理 + 国内镜像」规避该问题。
+4. 若装了 Clash 后遇到编译卡死，先关掉 Clash 或确认代理端口未注入环境变量。
+
+---
+
 ## 一、组件清单（版本锁定）
 
 | 组件 | 版本 | 原安装路径 | 说明 |
