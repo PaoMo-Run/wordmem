@@ -15,6 +15,21 @@ if (localPropertiesFile.exists()) {
 def flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
 def flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
 
+// ===== 正式签名配置（key.properties 不入库，由构建机本地提供）=====
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader("UTF-8") { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
+def hasReleaseSigning = keystorePropertiesFile.exists()
+        && keystoreProperties['storeFile'] != null
+        && keystoreProperties['storePassword'] != null
+        && keystoreProperties['keyAlias'] != null
+        && keystoreProperties['keyPassword'] != null
+
 android {
     namespace "com.wordmem.app"
     compileSdk 36
@@ -30,6 +45,17 @@ android {
         jvmTarget = '17'
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.wordmem.app"
         minSdk 26
@@ -37,15 +63,19 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            // 正式发布：保留 arm64-v8a + armeabi-v7a（覆盖 99% 真机），去掉 x86_64 模拟器架构以减体积
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
+            // 正式发布使用独立 keystore 签名（无 key.properties 时回退 debug 签名，便于开发）
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            // R8 代码压缩 + 资源收缩，显著减小 APK 体积
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
