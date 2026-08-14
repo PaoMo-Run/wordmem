@@ -36,8 +36,9 @@
 ## 4. 当前代码状态（重启后第一件事：验证）
 
 - **flutter analyze**：✅ **0 error 0 warning**（19 info 均为既有代码的 const 建议）
-- **flutter build apk --debug**：⚠️ **未完成**！后台任务 `66Hp0F` 在用户中断前仍在运行（首次需下载 flutter_secure_storage Android 库，5–10 分钟）—— 重启后必须**重新跑**验证
-- **Git 工作区**：脏（AI 基础设施、AGENTS.md、CHANGELOG、analysis 文档均未 commit）
+- **flutter build apk --debug**：✅ **已通过**（2026-08-15 03:00，279.5s，产物 `build/app/outputs/flutter-apk/app-debug.apk` 166MB）
+- **Git 工作区**：✅ 干净（AI 基础设施已提交 `d9044ae` 并推送 master，2026-08-15 03:07）
+- **Git 凭据**：✅ 已配置 `~/.git-credentials`（credential.helper=store），后续 push 免认证
 
 ## 5. 关键架构约定（AGENTS.md）
 
@@ -50,11 +51,12 @@
 
 ## 6. 已知沙箱陷阱（AGENTS.md 记录）
 
-1. **flutter 无响应**：删 `D:/flutter/bin/cache/lockfile` + `flutter.bat.lock`（必要时 `%APPDATA%/.dart-tool/dart-flutter-telemetry-session.json`）—— 本会话已实测触发一次
-2. **沙箱清除 `.git/refs`**：导致 `git push` / `checkout -b` 失败，用 `git -c http.extraheader="Authorization: basic <base64(x-access-token:TOKEN)>" push origin <hash>:refs/heads/<branch>` 直推
+1. **flutter 无响应/编译卡死**：删 `D:/flutter/bin/cache/lockfile` + `flutter.bat.lock` + `%APPDATA%/.dart-tool/dart-flutter-telemetry-session.json`；**根治方案**：把 `%APPDATA%/.dart-tool/dart-flutter-telemetry.config` 的 `reporting=1` 改为 `reporting=0`（2026-08-15 实测，禁用遥测后 flutter 恢复正常）
+2. **沙箱清除 `.git/refs`**：导致 `git push` / `checkout -b` 失败，用 `git -c http.extraheader="Authorization: basic <base64(x-access-token:TOKEN)>" push origin <hash>:refs/heads/<branch>` 直推；或手动 `mkdir .git/refs/remotes/origin && echo <hash> > .git/refs/remotes/origin/master` 重建
 3. **safe-delete 拦截 rm**：用 PowerShell `Remove-Item` 或 Python `os.remove`
-4. **curl 是 Windows 原生**：不认 `/d/` 路径，用 `D:/` 风格
+4. **curl 是 Windows 原生**：不认 `/d/` 路径，用 `D:/` 风格；tar 需加 `--force-local` 处理 `G:` 盘
 5. **storage.flutter-io.cn 限流**：下 Flutter 改用 Google 官方源 `storage.googleapis.com`
+6. **github.com 连接重置**（2026-08-15 实测）：`api.github.com` 通但 `github.com:443` 被重置（解析到 20.205.243.166 不通）；可用节点 `140.82.112.4` / `20.27.177.113`（HTTP 200）；写入 hosts 或重试即可
 
 ## 7. 用户最新指令（重启后立即执行）
 
