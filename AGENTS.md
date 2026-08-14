@@ -6,9 +6,9 @@
 
 **词记 (WordMem)**：一个完全离线的 Android 英语词汇学习 App。用户添加单词后，通过「艾宾浩斯遗忘曲线」间隔复习算法排程，以三段式测验（英译汉 → 选单词 → 默写）巩固记忆，并支持近义词检测、统计与备份恢复。
 
-- 版本：`1.1.3+11`
+- 版本：`1.2.0+12`
 - 平台：Android only（minSdk 26 / targetSdk 34 / compileSdk 36）
-- 定位：**完全离线**，不声明 `INTERNET` 权限，不引入任何网络依赖
+- 定位：**本地优先**。核心学习功能完全离线（词库/复习/统计/备份均在本地）；AI 功能（短文生成 / AI 陪练）可选联网，仅在用户主动使用时调用所选 AI 服务商
 
 ---
 
@@ -23,6 +23,7 @@
 | 数据库 | sqlite3 + sqlite3_flutter_libs | ^2.4.6 / ^0.5.28 |
 | 通知 | flutter_local_notifications | ^18.0.1 |
 | 其他 | file_picker / archive / crypto / shared_preferences / path / path_provider / timezone | 见 pubspec.yaml |
+| AI（可选联网） | http（OpenAI 兼容协议） / flutter_secure_storage（API Key 加密存储） | ^1.6.0 / ^10.3.1 |
 
 > ⚠️ **重要**：数据库用 **raw sqlite3（无 ORM）**，不是 Drift。`docs/Architecture.md` 里的 Drift 方案是早期设计，已废弃。
 
@@ -42,6 +43,8 @@ wordmem/lib/
   domain/models/                    # word / review_rating / stats / synonym_* / word_option
   domain/services/fsrs_service.dart # 艾宾浩斯遗忘曲线排程（文件名沿用 FSRS）
   domain/services/synonym_detector.dart # 近义词多级检测
+  domain/services/learning_context_builder.dart # 学习上下文构建（喂给 AI 的数据端口）
+  infra/ai/                         # AI 接入端口：ai_config / ai_service(抽象) / openai_compatible_service / ai_config_store
   features/{today,library,review,stats,settings,add_word,word_detail}/
   infra/notification_service.dart   # 本地通知
   shared/providers/app_providers.dart # 所有 Riverpod Provider
@@ -76,11 +79,13 @@ wordmem/scripts/                    # Python 工具脚本
 - 所有 SQL 通过 DAO 层（`lib/data/database/*_dao.dart`），不要在 UI 层直接写 SQL。
 - 备份导入关闭数据库前必须先 `PRAGMA wal_checkpoint(TRUNCATE)` 并清理 `-wal/-shm` 残留文件（历史 bug 根因）。
 
-### 4. 离线约束（硬性）
+### 4. 离线与联网边界（v1.3.0 起调整为「本地优先 + AI 可选联网」）
 
-- `AndroidManifest.xml` 不得添加 `INTERNET` 权限。
-- 不得引入 `http` / `dio` / 任何网络 SDK。
-- 新增依赖前先确认不破坏离线定位。
+- **核心学习功能必须完全离线**：词库 / 复习 / 统计 / 备份 / 导入，不得引入网络依赖。
+- **AI 功能（短文生成 / 陪练）可选联网**：`AndroidManifest.xml` 已声明 `INTERNET` 权限；网络调用一律走 `infra/ai/` 抽象层（`AiService` 接口 + OpenAI 兼容实现），禁止在 UI/业务层直接拼 HTTP。
+- **AI 配置集中管理**：API Key 用 `flutter_secure_storage`（Android Keystore 加密）存储；`aiConfigProvider` 是全局唯一配置入口，新 AI 功能统一 `ref.read(aiServiceProvider)` 调用。
+- **学习数据喂给 AI 的统一端口**：`LearningContextBuilder.buildToday()` 产出 `DailyLearningContext`（今日新增/复习/错词/掌握分布），所有 AI prompt 必须先注入该上下文，禁止各功能各自拼学习数据。
+- 新增网络依赖前先确认走 `infra/ai/` 抽象，不破坏"核心离线"边界。
 
 ### 5. 编码与配色约定
 
@@ -112,8 +117,8 @@ flutter build apk --debug
 
 ## 已知历史问题（避免重蹈覆辙）
 
-1. **编译卡死**：本机曾有「沙箱假删除 flutter 锁文件 + 遥测文件拒绝访问」问题。若 `flutter` 命令无响应，先删除 `C:/flutter/bin/cache/lockfile`、`flutter.bat.lock` 及 `%APPDATA%/.dart-tool/dart-flutter-telemetry-session.json`。
-2. **网络代理**：本机配置了 `HTTP_PROXY/HTTPS_PROXY=127.0.0.1:7890`，若代理未运行会导致 Gradle 下载失败。Gradle 已配置 `-Djava.net.useSystemProxies=false` + 阿里云 Maven 镜像 + 腾讯云 Gradle 镜像（见 `android/gradle.properties`、`settings.gradle`、`build.gradle`、`gradle-wrapper.properties`）。
+1. **编译卡死**：本机曾有「沙箱假删除 flutter 锁文件 + 遥测文件拒绝访问」问题。若 `flutter` 命令无响应或输出为空，按序处理：(a) 删除 `D:/flutter/bin/cache/lockfile`、`flutter.bat.lock`；(b) 删除 `%APPDATA%/.dart-tool/dart-flutter-telemetry-session.json`；(c) **根治**：把 `%APPDATA%/.dart-tool/dart-flutter-telemetry.config` 的 `reporting=1` 改为 `reporting=0`（禁用遥测上报，否则每次启动 flutter 都会重写 session 文件并再次卡死）。2026-08-15 实测：遥测开启时 `flutter --version`/`build` 静默失败（`Failed to set file modification time ... 拒绝访问`），禁用后恢复正常。
+2. **网络代理**：本机配置了 `HTTP_PROXY/HTTPS_PROXY=127.0.0.1:7890`，若代理未运行会导致 Gradle 下载失败。Gradle 已配置 `-Djava.net.useSystemProxies=false` + 阿里云 Maven 镜像 + 腾讯云 Gradle 镜像（见 `android/gradle.properties`、`settings.gradle`、`build.gradle`、`gradle-wrapper.properties`）。注：AI 功能直连服务商 API，不走 Gradle 镜像。
 3. **翻卡状态残留**：复习卡片（`quiz_cards.dart`）必须传 `key: ValueKey(wordId)`，否则换词时 State 复用导致「第二词直接显示释义」。
 4. **统计图溢出**：`stats_page.dart` 学习趋势现为折线图（CustomPaint），仅展示近 7 天，勿改回密集柱状图。
 

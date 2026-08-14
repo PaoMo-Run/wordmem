@@ -7,6 +7,7 @@ import '../../features/review/presentation/custom_review_page.dart';
 import '../../features/review/presentation/synonym_challenge_page.dart';
 import '../../features/stats/presentation/stats_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/settings/presentation/ai_config_page.dart';
 import '../../features/add_word/presentation/add_word_page.dart';
 import '../../features/add_word/presentation/text_import_page.dart';
 import '../../features/word_detail/presentation/word_detail_page.dart';
@@ -74,6 +75,11 @@ final appRouter = GoRouter(
         final id = int.parse(state.pathParameters['id']!);
         return WordDetailPage(wordId: id);
       },
+    ),
+    GoRoute(
+      path: '/ai-config',
+      name: 'aiConfig',
+      builder: (context, state) => const AiConfigPage(),
     ),
   ],
 );

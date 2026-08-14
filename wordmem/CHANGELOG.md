@@ -1,5 +1,12 @@
 # 更新日志 / Changelog
 
+## 未发布（v1.3.0-dev）— AI 接入基础设施
+- 🌐 定位调整：核心功能仍完全离线，「本地优先 + AI 功能可选联网」
+- 🔌 **AI 接入端口（infra/ai/）**：OpenAI 兼容协议抽象（AiService 接口 + 非流式/流式实现），预设 DeepSeek / 智谱 GLM / Kimi / 通义千问 / 豆包
+- 🔑 API Key 加密存储（flutter_secure_storage / Android Keystore），设置页新增「AI 服务」配置区 + 连通性测试
+- 📊 **学习上下文端口**：`LearningContextBuilder` 把今日新增/复习/错词/掌握分布整理成 AI 可消费上下文，为「今日短文」「AI 陪练」铺路
+- ⚠️ AndroidManifest 新增 INTERNET 权限（仅 AI 功能使用）
+
 ## 1.2.0（2026-08-14）— 正式发布版
 - 🎉 首个正式发布版（此前 1.1.x 为开发迭代版）
 - 📦 **体积优化**：启用 R8 代码压缩 + 资源收缩（shrinkResources），裁剪 x86_64 模拟器架构，APK 由 ~157MB（debug）压缩至 **100MB 以内**

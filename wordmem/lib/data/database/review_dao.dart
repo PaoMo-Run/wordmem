@@ -1,5 +1,6 @@
 import 'package:sqlite3/sqlite3.dart';
 import 'app_database.dart';
+import '../../domain/models/review_rating.dart';
 
 /// 复习记录 DAO
 class ReviewDao {
@@ -7,6 +8,38 @@ class ReviewDao {
   ReviewDao(this._db);
 
   Database get _v => _db.vocab;
+
+  /// 今日复习过的单词（去重，按词排序）——供 AI 学习上下文使用
+  List<String> getReviewedWordsToday() {
+    final rows = _v.select(
+      '''SELECT DISTINCT uw.word FROM review_logs rl
+         JOIN user_words uw ON uw.id = rl.user_word_id
+         WHERE rl.reviewed_at >= ? AND rl.reviewed_at < ?
+         ORDER BY uw.word COLLATE NOCASE''',
+      _todayRange(),
+    );
+    return rows.map((r) => r['word'] as String).toList();
+  }
+
+  /// 今日忘记的单词（评分 Again，去重）——供 AI 上下文重点巩固
+  List<String> getMissedWordsToday() {
+    final rows = _v.select(
+      '''SELECT DISTINCT uw.word FROM review_logs rl
+         JOIN user_words uw ON uw.id = rl.user_word_id
+         WHERE rl.reviewed_at >= ? AND rl.reviewed_at < ? AND rl.rating = ?
+         ORDER BY uw.word COLLATE NOCASE''',
+      [..._todayRange(), ReviewRating.again.value],
+    );
+    return rows.map((r) => r['word'] as String).toList();
+  }
+
+  /// 今日 UTC 起止区间
+  List<String> _todayRange() {
+    final now = DateTime.now().toUtc();
+    final start = DateTime(now.year, now.month, now.day).toUtc();
+    final end = start.add(const Duration(days: 1));
+    return [start.toIso8601String(), end.toIso8601String()];
+  }
 
   /// 插入复习记录
   void insert({

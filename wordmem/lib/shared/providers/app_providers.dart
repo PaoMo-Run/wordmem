@@ -15,7 +15,12 @@ import '../../data/repositories/review_repository.dart';
 import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/import_repository.dart';
 import '../../domain/services/fsrs_service.dart';
+import '../../domain/services/learning_context_builder.dart';
 import '../../infra/notification_service.dart';
+import '../../infra/ai/ai_config.dart';
+import '../../infra/ai/ai_config_store.dart';
+import '../../infra/ai/ai_service.dart';
+import '../../infra/ai/openai_compatible_service.dart';
 
 // ============================================================
 // 词库刷新信号 Provider
@@ -289,3 +294,70 @@ class FirstLaunchNotifier extends StateNotifier<bool> {
     _prefs?.setBool(AppConstants.keyFirstLaunch, false);
   }
 }
+
+// ============================================================
+// AI 服务 Provider（未来短文生成 / AI 陪练的接入端口）
+// ============================================================
+
+/// AI 配置存储
+final aiConfigStoreProvider = Provider<AiConfigStore>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).maybeWhen(
+        data: (p) => p,
+        orElse: () => null,
+      );
+  return AiConfigStore(prefs: prefs);
+});
+
+/// AI 配置状态（默认 DeepSeek 模板，异步加载已保存配置）
+final aiConfigProvider = StateNotifierProvider<AiConfigNotifier, AiConfig>((ref) {
+  return AiConfigNotifier(ref.watch(aiConfigStoreProvider));
+});
+
+class AiConfigNotifier extends StateNotifier<AiConfig> {
+  final AiConfigStore _store;
+
+  AiConfigNotifier(this._store)
+      : super(AiConfig(
+          providerName: AiPresets.deepseek.name,
+          baseUrl: AiPresets.deepseek.baseUrl,
+          apiKey: '',
+          model: AiPresets.deepseek.defaultModel,
+        )) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      state = await _store.load();
+    } catch (_) {
+      // 读取失败保持默认值
+    }
+  }
+
+  /// 保存配置并同步状态（apiKey 为空则保留原 key）
+  Future<void> save(AiConfig config) async {
+    await _store.save(config);
+    state = config;
+  }
+
+  /// 清除 API Key
+  Future<void> clearApiKey() async {
+    await _store.clearApiKey();
+    state = state.copyWith(apiKey: '');
+  }
+}
+
+/// AI 服务实例（配置变化时自动重建，可插拔任意 OpenAI 兼容服务商）
+final aiServiceProvider = Provider<AiService>((ref) {
+  final config = ref.watch(aiConfigProvider);
+  return OpenAiCompatibleService(config);
+});
+
+/// 学习上下文构建器（把用户学习数据喂给 AI 的端口）
+final learningContextBuilderProvider = Provider<LearningContextBuilder>((ref) {
+  return LearningContextBuilder(
+    wordDao: ref.watch(wordDaoProvider),
+    reviewDao: ref.watch(reviewDaoProvider),
+    statsDao: ref.watch(statsDaoProvider),
+  );
+});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/repositories/backup_repository.dart';
@@ -139,6 +140,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           const Divider(),
 
+          // AI 服务（未来短文生成 / 陪练的接入端口）
+          _SectionHeader('AI 服务'),
+          Consumer(builder: (context, ref, _) {
+            final aiCfg = ref.watch(aiConfigProvider);
+            return ListTile(
+              leading: const Icon(Icons.smart_toy_outlined),
+              title: const Text('AI 接入配置'),
+              subtitle: Text(aiCfg.isConfigured
+                  ? '已接入 ${aiCfg.providerName}（${aiCfg.model}）'
+                  : '未配置：接入后可使用 AI 短文 / 陪练'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/ai-config'),
+            );
+          }),
+
+          const Divider(),
+
           // 数据管理
           _SectionHeader('数据管理'),
           ListTile(
@@ -261,7 +279,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.shield_outlined),
             title: const Text('隐私'),
-            subtitle: const Text('本应用完全离线，不请求网络权限，不收集任何数据。'),
+            subtitle: const Text('学习数据默认仅存本机；仅当你主动使用 AI 功能时，当日学习数据才会发送给所选 AI 服务商。'),
           ),
           ListTile(
             leading: const Icon(Icons.code),
