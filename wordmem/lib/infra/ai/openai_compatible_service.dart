@@ -100,9 +100,12 @@ class OpenAiCompatibleService implements AiService {
   @override
   Future<void> testConnection() async {
     _ensureConfigured();
+    // 推理模型（如 agnes-2.5-flash）会先消耗 token 在思考过程（reasoning_content）上，
+    // maxTokens 太小会导致正式内容（content）为空而被误判为无返回。
+    // 使用 512 确保推理模型能正常输出正文。
     final resp = await chat(const AiRequest(
       messages: [AiMessage(role: AiRole.user, content: 'ping')],
-      maxTokens: 8,
+      maxTokens: 512,
       temperature: 0,
     ));
     if (resp.content.trim().isEmpty) {
