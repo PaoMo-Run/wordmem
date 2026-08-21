@@ -83,7 +83,7 @@ class StatsDao {
     );
   }
 
-  /// 掌握状态分布
+  /// 掌握状态分布（7 周期方案：mastered 为显式状态）
   StatusDistribution getStatusDistribution() {
     final newCount = _v.select(
       "SELECT COUNT(*) as c FROM user_words WHERE card_state = 'new' AND reps = 0",
@@ -94,11 +94,11 @@ class StatsDao {
     ).first['c'] as int;
 
     final familiarCount = _v.select(
-      "SELECT COUNT(*) as c FROM user_words WHERE card_state = 'review' AND reps < 5",
+      "SELECT COUNT(*) as c FROM user_words WHERE card_state = 'review'",
     ).first['c'] as int;
 
     final masteredCount = _v.select(
-      "SELECT COUNT(*) as c FROM user_words WHERE card_state = 'review' AND reps >= 5 AND lapses = 0",
+      "SELECT COUNT(*) as c FROM user_words WHERE card_state = 'mastered'",
     ).first['c'] as int;
 
     return StatusDistribution(

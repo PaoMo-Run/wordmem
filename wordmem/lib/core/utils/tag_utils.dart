@@ -13,6 +13,9 @@ class TagUtils {
     'ielts': '雅思',
     'toefl': '托福',
     'gre': 'GRE',
+    // 专业版词典（pro_additions 写入的 tag）
+    'pro_av': '航空专业词',
+    'pro': '专业版',
   };
 
   /// 将 ECDICT 标签字符串转为用户友好标签（逗号分隔）

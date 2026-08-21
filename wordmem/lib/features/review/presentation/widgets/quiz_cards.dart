@@ -1,87 +1,132 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
-import '../../../../domain/models/review_rating.dart';
 import '../../../../domain/models/word_option.dart';
 
 /// 统一的测验卡片组件集合
 ///
 /// 今日复习与自选复习共用：
-/// 1. EnToZhCard   英译汉翻卡（看英文回想中文，翻面后评分）
+/// 1. EnToZhChoiceCard 英译汉选择题（看英文单词，选对应中文释义）
 /// 2. ChooseWordCard 四选一（看中文释义，选对应英文单词）
 /// 3. DictationCard 默写（看中文释义/首字母提示，拼写英文）
 /// 所有卡片均带"跳过"选项。
 
-/// 英译汉翻卡卡片
-class EnToZhCard extends StatefulWidget {
+/// 英译汉选择题卡片
+///
+/// 题干：英文单词；选项：4 个中文释义（正确项 = 该词释义）。
+/// 用户选出对应释义后回调 onAnswered(是否正确)，再点「下一题」。
+class EnToZhChoiceCard extends StatefulWidget {
   final String word;
   final String definition;
-  final String? note;
-  final bool isNew;
-  final int lapses;
-  final void Function(ReviewRating rating) onRate;
+  final List<WordOption> options;
+  final void Function(bool correct) onAnswered;
+  final VoidCallback onNext;
   final VoidCallback onSkip;
+  final bool isLast;
 
-  const EnToZhCard({
+  const EnToZhChoiceCard({
     super.key,
     required this.word,
     required this.definition,
-    this.note,
-    this.isNew = false,
-    this.lapses = 0,
-    required this.onRate,
+    required this.options,
+    required this.onAnswered,
+    required this.onNext,
     required this.onSkip,
+    required this.isLast,
   });
 
   @override
-  State<EnToZhCard> createState() => _EnToZhCardState();
+  State<EnToZhChoiceCard> createState() => _EnToZhChoiceCardState();
 }
 
-class _EnToZhCardState extends State<EnToZhCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _reveal() {
-    _controller.forward();
-  }
+class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
+  int? _selected;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final answered = _selected != null;
+    final correct = answered &&
+        widget.options[_selected!].word == widget.word;
 
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _DirectionChip(text: '英译汉', color: AppColors.primary),
             const SizedBox(height: 16),
-            if (widget.isNew)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('新词', style: theme.textTheme.labelSmall),
+            Text(
+              '选择与下列单词对应的中文释义',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 16),
-            _buildFlipCard(theme),
-            const SizedBox(height: 12),
-            // 跳过
+            // 英文单词题干
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                widget.word,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 24),
+            LayoutBuilder(builder: (context, constraints) {
+              final wide = constraints.maxWidth > 600;
+              final options = widget.options.asMap().entries.map((e) {
+                final idx = e.key;
+                final opt = e.value;
+                return _buildOption(theme, idx, opt, answered, correct);
+              }).toList();
+              if (wide) {
+                return GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 3.4,
+                  children: options,
+                );
+              }
+              return Column(children: options);
+            }),
+            if (answered) ...[
+              const SizedBox(height: 8),
+              Text(
+                correct
+                    ? '回答正确！'
+                    : '正确答案：${widget.definition.isEmpty ? widget.word : widget.definition}',
+                style: TextStyle(
+                  color: correct ? AppColors.ratingGood : AppColors.ratingAgain,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: widget.onNext,
+                  child: Text(
+                    widget.isLast ? '完成' : '下一题',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
             TextButton.icon(
               onPressed: widget.onSkip,
               icon: const Icon(Icons.skip_next, size: 18),
@@ -93,176 +138,55 @@ class _EnToZhCardState extends State<EnToZhCard>
     );
   }
 
-  /// 3D 翻转卡片：正面英文单词，背面释义 + 评分按钮
-  Widget _buildFlipCard(ThemeData theme) {
-    return SizedBox(
-      height: 400,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final angle = _controller.value * math.pi;
-          final isFront = angle < math.pi / 2;
-          // 背面评分按钮在翻转后半段淡入
-          final backOpacity =
-              ((angle - math.pi / 2) / (math.pi / 5)).clamp(0.0, 1.0);
-          return Transform(
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.0015)
-              ..rotateY(angle),
-            alignment: Alignment.center,
-            child: isFront
-                ? _frontFace(theme)
-                : Opacity(opacity: backOpacity, child: _backFace(theme)),
-          );
-        },
-      ),
-    );
-  }
+  Widget _buildOption(
+      ThemeData theme, int idx, WordOption opt, bool answered, bool correct) {
+    final selected = _selected == idx;
+    final isCorrectOpt = opt.word == widget.word;
 
-  /// 正面：英文单词 + 显示释义按钮
-  Widget _frontFace(ThemeData theme) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
-      ),
+    Color bg = Colors.transparent;
+    Color border = theme.dividerColor;
+    Color fg = theme.colorScheme.onSurface;
+
+    if (answered) {
+      if (isCorrectOpt) {
+        bg = AppColors.ratingGood.withValues(alpha: 0.15);
+        border = AppColors.ratingGood;
+        fg = AppColors.ratingGood;
+      } else if (selected) {
+        bg = AppColors.ratingAgain.withValues(alpha: 0.15);
+        border = AppColors.ratingAgain;
+        fg = AppColors.ratingAgain;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.word,
-            style: theme.textTheme.displaySmall?.copyWith(
-              fontWeight: FontWeight.bold,
+          OutlinedButton(
+            onPressed: answered
+                ? null
+                : () {
+                    setState(() => _selected = idx);
+                    widget.onAnswered(opt.word == widget.word);
+                  },
+            style: OutlinedButton.styleFrom(
+              backgroundColor: bg,
+              foregroundColor: fg,
+              side: BorderSide(
+                  color: border, width: selected || isCorrectOpt ? 2 : 1),
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Icon(
-            Icons.touch_app_outlined,
-            size: 32,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '点击下方按钮查看释义',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton(
-              onPressed: _reveal,
-              child: const Text('显示释义',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+            child: Text(
+              opt.definition.isEmpty ? opt.word : opt.definition,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 背面：释义 + 备注 + 四档评分按钮（整体再转 pi 抵消镜像）
-  Widget _backFace(ThemeData theme) {
-    return Transform(
-      transform: Matrix4.identity()..rotateY(math.pi),
-      alignment: Alignment.center,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.definition.isNotEmpty)
-                  Text(
-                    widget.definition,
-                    style: theme.textTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                if ((widget.note ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      widget.note!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-                if (widget.lapses > 0) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '已遗忘 ${widget.lapses} 次',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.ratingAgain,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 28),
-                // 四档评分按钮
-                Row(
-                  children: [
-                    Expanded(
-                      child: _RatingButton(
-                        label: ReviewRating.again.label,
-                        color: AppColors.ratingAgain,
-                        onPressed: () => widget.onRate(ReviewRating.again),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _RatingButton(
-                        label: ReviewRating.hard.label,
-                        color: AppColors.ratingHard,
-                        onPressed: () => widget.onRate(ReviewRating.hard),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _RatingButton(
-                        label: ReviewRating.good.label,
-                        color: AppColors.ratingGood,
-                        onPressed: () => widget.onRate(ReviewRating.good),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _RatingButton(
-                        label: ReviewRating.easy.label,
-                        color: AppColors.ratingEasy,
-                        onPressed: () => widget.onRate(ReviewRating.easy),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -334,10 +258,25 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
               ),
             ),
             const SizedBox(height: 24),
-            ...widget.options.asMap().entries.map((e) {
-              final idx = e.key;
-              final opt = e.value;
-              return _buildOption(theme, idx, opt, answered, correct);
+            LayoutBuilder(builder: (context, constraints) {
+              final wide = constraints.maxWidth > 600;
+              final options = widget.options.asMap().entries.map((e) {
+                final idx = e.key;
+                final opt = e.value;
+                return _buildOption(theme, idx, opt, answered, correct);
+              }).toList();
+              if (wide) {
+                return GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 2.8,
+                  children: options,
+                );
+              }
+              return Column(children: options);
             }),
             if (answered) ...[
               const SizedBox(height: 8),
@@ -552,26 +491,31 @@ class _DictationCardState extends State<DictationCard> {
               ),
             ),
             const SizedBox(height: 24),
-            TextField(
-              controller: _controller,
-              focusNode: _focus,
-              textAlign: TextAlign.center,
-              textInputAction: TextInputAction.done,
-              autocorrect: false,
-              enableSuggestions: false,
-              textCapitalization: TextCapitalization.none,
-              decoration: InputDecoration(
-                hintText: '输入英文单词',
-                border: const OutlineInputBorder(),
-                focusedBorder: OutlineInputBorder(
-                  borderSide:
-                      BorderSide(color: theme.colorScheme.primary, width: 2),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focus,
+                  textAlign: TextAlign.center,
+                  textInputAction: TextInputAction.done,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textCapitalization: TextCapitalization.none,
+                  decoration: InputDecoration(
+                    hintText: '输入英文单词',
+                    border: const OutlineInputBorder(),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide:
+                          BorderSide(color: theme.colorScheme.primary, width: 2),
+                    ),
+                  ),
+                  onSubmitted: (_) {
+                    if (!_answered) _submit();
+                  },
+                  enabled: !_answered,
                 ),
               ),
-              onSubmitted: (_) {
-                if (!_answered) _submit();
-              },
-              enabled: !_answered,
             ),
             const SizedBox(height: 16),
             if (_answered) ...[
@@ -635,48 +579,6 @@ class _DirectionChip extends StatelessWidget {
       child: Text(text,
           style: TextStyle(
               color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-/// 评分按钮
-class _RatingButton extends StatelessWidget {
-  final String label;
-  final Color color;
-  final VoidCallback onPressed;
-
-  const _RatingButton({
-    required this.label,
-    required this.color,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: FilledButton(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-          ),
-        ),
-      ),
     );
   }
 }

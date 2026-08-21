@@ -72,30 +72,41 @@ class ScheduleResult {
   const ScheduleResult({required this.card, this.retrievability = 0});
 }
 
-/// 艾宾浩斯遗忘曲线复习算法
+/// 经典艾宾浩斯遗忘曲线复习算法（7 周期）
 ///
-/// 采用经典艾宾浩斯遗忘曲线（Ebbinghaus forgetting curve）思想：
-/// - 固定复习间隔序列 [3h, 8h, 1d, 2d, 4d, 7d, 15d, 30d]
-///   （记忆衰减最快的前期密集复习，先小时级检测再进入天级，后期拉长）
-/// - `reps` 表示复习阶段（0=新词，1=3小时后，2=8小时后，3=1天……封顶 30 天）
-/// - `stability` 复用为"当前间隔天数"，用于遗忘曲线计算
+/// 固定复习间隔序列（用户确认版）：
+///   [5 分钟, 30 分钟, 12 小时, 1 天, 2 天, 4 天, 7 天]
+///   - 前 3 个为短期记忆检测节点（分钟/小时级）
+///   - 后 4 个为长期记忆强化节点（天级）
+/// - `reps` 表示当前所处的周期（0=新词，1=5分钟后，2=30分钟后……
+///   reps=7 对应 7 天后；完成第 7 周期且答对 → 永久掌握）
+/// - `stability` 复用为"当前周期间隔天数"，用于遗忘曲线计算
 /// - 遗忘曲线：R(t) = e^(-t/S)，S 为当前间隔（记忆强度）
 ///
-/// 评分规则（评分驱动阶段推进 / 回退）：
-/// - 没想起来 (again) → 遗忘，lapses+1，回退到最短间隔（3 小时）
-/// - 困难 (hard)      → 保持当前间隔不变
-/// - 正确 (good)      → 进入下一档间隔
-/// - 很轻松 (easy)    → 跳过一档，加速
+/// 评分规则（评分驱动周期推进 / 重做）：
+/// - 没想起来 (again) → lapses+1，**重做当前周期**（1 分钟后即可再复习）
+/// - 困难 (hard)      → 保持当前周期不变
+/// - 正确 (good)      → 进入下一周期
+/// - 很轻松 (easy)    → 跳过一档，加速（+2，封顶第 7 周期）
 ///
-/// 状态映射：reps==0 → 新词，reps 1~2 → 学习中（小时级），reps>=3 → 复习中。
+/// 状态映射：reps==0 → 新词，reps 1~2 → 学习中（分钟/小时级），
+///           reps 3~7 → 复习中，完成第 7 周期 → 已掌握（mastered）。
 class FsrsService {
-  late double _desiredRetention;
-
-  /// 艾宾浩斯复习间隔序列（前两项为小时级检测节点，其余为天）
-  /// 3 小时 → 8 小时 → 1 天 → 2 天 → 4 天 → 7 天 → 15 天 → 30 天
-  static const List<double> ebbinghausIntervals = [
-    3 / 24, 8 / 24, 1, 2, 4, 7, 15, 30,
+  /// 经典艾宾浩斯 7 周期复习间隔（固定节点，不做目标记忆率微调）
+  static const List<Duration> ebbinghausIntervals = [
+    Duration(minutes: 5),
+    Duration(minutes: 30),
+    Duration(hours: 12),
+    Duration(days: 1),
+    Duration(days: 2),
+    Duration(days: 4),
+    Duration(days: 7),
   ];
+
+  /// 完成全部周期后标记掌握的远期保险时间（正常查询已排除 mastered）
+  static const Duration _masteredFuse = Duration(days: 3650);
+
+  late double _desiredRetention;
 
   FsrsService() {
     _desiredRetention = AppConstants.defaultDesiredRetention;
@@ -103,6 +114,7 @@ class FsrsService {
 
   double get desiredRetention => _desiredRetention;
 
+  /// 7 周期为固定节点，目标记忆率仅作展示存档，不参与间隔计算。
   void setDesiredRetention(double r) {
     _desiredRetention = r.clamp(
       AppConstants.minDesiredRetention,
@@ -114,20 +126,11 @@ class FsrsService {
   //  间隔计算
   // ============================================================
 
-  /// 由复习阶段计算基础间隔（天）
-  double _baseIntervalDays(int reps) {
-    if (reps <= 0) return 0;
+  /// 由复习周期返回基础间隔
+  Duration _intervalForReps(int reps) {
+    if (reps <= 0) return Duration.zero;
     final idx = math.min(reps - 1, ebbinghausIntervals.length - 1);
     return ebbinghausIntervals[idx];
-  }
-
-  /// 由复习阶段计算实际间隔（含目标记忆率微调：记忆率越高间隔越短）
-  Duration _intervalForReps(int reps) {
-    final base = _baseIntervalDays(reps);
-    if (base <= 0) return Duration.zero;
-    final adjusted =
-        base * (AppConstants.defaultDesiredRetention / _desiredRetention);
-    return Duration(seconds: (adjusted * 86400).round());
   }
 
   /// 艾宾浩斯遗忘曲线 R(t) = e^(-t/S)
@@ -146,37 +149,67 @@ class FsrsService {
         : 0.0;
     final retrievability = predictRetention(card, now);
 
+    // 已掌握的词防御性处理（正常不会进入复习队列）
+    if (card.state == CardState.mastered) {
+      return ScheduleResult(card: card, retrievability: retrievability);
+    }
+
     var reps = card.reps;
     var lapses = card.lapses;
 
-    if (card.reps == 0) {
-      // 新词首次复习
+    if (reps == 0) {
+      // 新词首次复习：先进入第 1 周期（5 分钟）
+      reps = 1;
       if (rating == ReviewRating.again) {
         lapses++;
-        reps = 1;
+        // 立即重做第 1 周期
       } else if (rating == ReviewRating.easy) {
-        reps = 2; // 首次就很轻松，跳到 8 小时
-      } else {
-        reps = 1; // hard / good：从 3 小时开始
+        reps = 3; // 首次就很轻松，直接跳到 12 小时
       }
     } else {
-      if (rating == ReviewRating.again) {
-        lapses++;
-        reps = 1; // 遗忘回退到最短间隔
-      } else if (rating == ReviewRating.good) {
-        reps += 1; // 进入下一档
-      } else if (rating == ReviewRating.easy) {
-        reps += 2; // 跳过一档加速
+      switch (rating) {
+        case ReviewRating.again:
+          lapses++;
+          // 重做当前周期：reps 不变
+          break;
+        case ReviewRating.hard:
+          // 保持当前周期
+          break;
+        case ReviewRating.good:
+          reps += 1;
+          break;
+        case ReviewRating.easy:
+          reps += 2; // 跳过一档加速
+          break;
       }
-      // hard：保持不变
     }
 
-    reps = math.max(reps, 1);
+    // 完成全部 7 个周期且本轮回答正确 → 永久掌握
+    if (reps >= ebbinghausIntervals.length &&
+        rating != ReviewRating.again) {
+      final mastered = card.copyWith(
+        state: CardState.mastered,
+        stability: ebbinghausIntervals.length.toDouble(),
+        difficulty: 0,
+        reps: ebbinghausIntervals.length,
+        lapses: lapses,
+        due: now.add(_masteredFuse),
+        lastReview: now,
+        elapsedDays: elapsedDays,
+        scheduledDays: 0,
+      );
+      return ScheduleResult(card: mastered, retrievability: retrievability);
+    }
+
+    reps = reps.clamp(1, ebbinghausIntervals.length);
 
     final interval = _intervalForReps(reps);
-    final newDue = now.add(interval);
-    final newStability = _baseIntervalDays(reps);
-    // reps 1~2 是小时级短间隔（3h/8h，学习中），reps>=3 进入天级（复习中）
+    // again：重做当前周期，1 分钟后即可再次复习
+    final newDue = rating == ReviewRating.again
+        ? now.add(const Duration(minutes: 1))
+        : now.add(interval);
+    final newStability = interval.inSeconds / 86400.0;
+    // reps 1~2 是分钟/小时级短间隔（学习中），reps>=3 进入天级（复习中）
     final newState = reps <= 2 ? CardState.learning : CardState.review;
 
     final newCard = card.copyWith(
@@ -188,7 +221,7 @@ class FsrsService {
       due: newDue,
       lastReview: now,
       elapsedDays: elapsedDays,
-      scheduledDays: interval.inSeconds / 86400.0,
+      scheduledDays: newStability,
     );
 
     return ScheduleResult(card: newCard, retrievability: retrievability);

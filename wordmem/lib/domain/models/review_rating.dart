@@ -22,7 +22,9 @@ enum CardState {
   newCard('new'),
   learning('learning'),
   review('review'),
-  relearning('relearning');
+  relearning('relearning'),
+  /// 艾宾浩斯 7 周期全部完成，永久掌握（不再进入复习队列）
+  mastered('mastered');
 
   final String value;
   const CardState(this.value);
@@ -32,7 +34,7 @@ enum CardState {
           orElse: () => CardState.newCard);
 }
 
-/// 掌握状态（UI 展示用，由 card_state + reps + lapses 推导）
+/// 掌握状态（UI 展示用，由 card_state + reps 推导）
 enum MasteryStatus {
   newWord('新词'),
   learning('学习中'),
@@ -48,11 +50,12 @@ enum MasteryStatus {
     required int lapses,
   }) {
     final state = CardState.fromString(cardState);
+    if (state == CardState.mastered) return MasteryStatus.mastered;
     if (state == CardState.newCard && reps == 0) return MasteryStatus.newWord;
     if (state == CardState.learning || state == CardState.relearning) {
       return MasteryStatus.learning;
     }
-    if (reps >= 5 && lapses == 0) return MasteryStatus.mastered;
+    // 7 周期方案：review 状态的词尚未完成全部周期，归为熟悉
     return MasteryStatus.familiar;
   }
 }

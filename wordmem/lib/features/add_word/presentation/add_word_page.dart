@@ -7,7 +7,9 @@ import '../../../domain/models/word.dart';
 
 /// 添加单词页面
 class AddWordPage extends ConsumerStatefulWidget {
-  const AddWordPage({super.key});
+  /// 预填的单词（从词库词典搜索结果跳转时传入，自动搜索匹配）
+  final String? initialWord;
+  const AddWordPage({super.key, this.initialWord});
 
   @override
   ConsumerState<AddWordPage> createState() => _AddWordPageState();
@@ -23,6 +25,17 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
   DictMatchResult? _matchResult;
   bool _searched = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final w = widget.initialWord?.trim();
+    if (w != null && w.isNotEmpty) {
+      _wordController.text = w;
+      // 首帧后自动搜索匹配（首帧前 setState 非法）
+      WidgetsBinding.instance.addPostFrameCallback((_) => _search());
+    }
+  }
 
   @override
   void dispose() {
@@ -233,7 +246,10 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 Text(
                   dict.word,
@@ -241,15 +257,13 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                if (dict.phonetic != null && dict.phonetic!.isNotEmpty) ...[
-                  const SizedBox(width: 8),
+                if (dict.phonetic != null && dict.phonetic!.isNotEmpty)
                   Text(
                     '/${dict.phonetic}/',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     ),
                   ),
-                ],
               ],
             ),
             if (relation != null) ...[

@@ -21,7 +21,7 @@ class ReviewRepository {
     final dueWords = _db.vocab
         .select(
           '''SELECT * FROM user_words
-         WHERE due <= ? AND card_state != 'new'
+         WHERE due <= ? AND card_state NOT IN ('new', 'mastered')
          ORDER BY due ASC LIMIT ?''',
           [now, limit],
         )

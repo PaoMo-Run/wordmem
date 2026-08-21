@@ -8,14 +8,19 @@ import '../../data/database/word_dao.dart';
 import '../../data/database/review_dao.dart';
 import '../../data/database/stats_dao.dart';
 import '../../data/database/settings_dao.dart';
+import '../../data/database/story_dao.dart';
+import '../../data/database/story_quiz_dao.dart';
 import '../../data/sources/dict_source.dart';
 import '../../data/sources/synonym_dict_source.dart';
 import '../../data/repositories/word_repository.dart';
 import '../../data/repositories/review_repository.dart';
 import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/import_repository.dart';
+import '../../data/repositories/story_repository.dart';
 import '../../domain/services/fsrs_service.dart';
 import '../../domain/services/learning_context_builder.dart';
+import '../../domain/services/ai_story_service.dart';
+import '../../domain/services/story_quiz_engine.dart';
 import '../../infra/notification_service.dart';
 import '../../infra/ai/ai_config.dart';
 import '../../infra/ai/ai_config_store.dart';
@@ -29,6 +34,14 @@ import '../../infra/ai/openai_compatible_service.dart';
 /// 词库列表版本号：每次 add/delete/update 操作后自增，
 /// LibraryPage 等页面通过 ref.listen 监听此值实现自动刷新。
 final wordListVersionProvider = StateProvider<int>((ref) => 0);
+
+/// 近义词群 / 词根群版本号：群挑战通过、群组迁移、手动移出词林/词根后自增，
+/// WordGroupMemoryPage 通过 ref.listen 监听此值实现自动刷新。
+final groupVersionProvider = StateProvider<int>((ref) => 0);
+
+/// 短文版本号：短文保存/编辑/归档、测验记录写入后自增，
+/// StoryCenterPage / StoryMemoryPage 通过 ref.listen 监听此值实现自动刷新。
+final storyVersionProvider = StateProvider<int>((ref) => 0);
 
 // ============================================================
 // 核心基础设施 Providers
@@ -349,7 +362,17 @@ class AiConfigNotifier extends StateNotifier<AiConfig> {
 
 /// AI 服务实例（配置变化时自动重建，可插拔任意 OpenAI 兼容服务商）
 final aiServiceProvider = Provider<AiService>((ref) {
-  final config = ref.watch(aiConfigProvider);
+  var config = ref.watch(aiConfigProvider);
+  // 未配置用户自己的 API 时，自动回退到内置免费服务（Agens Free）
+  if (!config.isConfigured) {
+    final preset = AiPresets.agnes;
+    config = config.copyWith(
+      providerName: preset.name,
+      baseUrl: preset.baseUrl,
+      apiKey: preset.apiKey ?? '',
+      model: preset.defaultModel,
+    );
+  }
   return OpenAiCompatibleService(config);
 });
 
@@ -360,4 +383,45 @@ final learningContextBuilderProvider = Provider<LearningContextBuilder>((ref) {
     reviewDao: ref.watch(reviewDaoProvider),
     statsDao: ref.watch(statsDaoProvider),
   );
+});
+
+// ============================================================
+// 今日短文 Providers
+// ============================================================
+
+/// 短文仓库（取词 / 富化 / AI 生成 / 剪贴板导入 / 记忆库持久化）
+final storyRepositoryProvider = Provider<StoryRepository>((ref) {
+  final db = ref.watch(databaseProvider).maybeWhen(
+        data: (d) => d,
+        orElse: () => throw StateError('Database not ready'),
+      );
+  final dict = ref.watch(dictSourceProvider);
+  final aiService = ref.watch(aiServiceProvider);
+  final aiConfig = ref.watch(aiConfigProvider);
+  return StoryRepository(
+    storyDao: StoryDao(db),
+    wordDao: WordDao(db),
+    dict: dict,
+    aiService: AiStoryService(aiService,
+        enableThinking: aiConfig.enableThinking,
+        thinkingLevel: aiConfig.thinkingLevel),
+  );
+});
+
+// ============================================================
+// 短文记忆测试 Providers
+// ============================================================
+
+/// 短文记忆测试 DAO
+final storyQuizDaoProvider = Provider<StoryQuizDao>((ref) {
+  final db = ref.watch(databaseProvider).maybeWhen(
+        data: (d) => d,
+        orElse: () => throw StateError('Database not ready'),
+      );
+  return StoryQuizDao(db);
+});
+
+/// 短文记忆测试出题引擎
+final storyQuizEngineProvider = Provider<StoryQuizEngine>((ref) {
+  return StoryQuizEngine();
 });

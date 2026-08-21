@@ -32,10 +32,17 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   int _chooseCorrect = 0;
   int _dictationCorrect = 0;
 
+  // 三环节各词作答结果（wordId -> 是否正确；null=跳过/未作答）
+  final Map<int, bool> _enToZhResults = {};
+  final Map<int, bool> _chooseResults = {};
+  final Map<int, bool> _dictResults = {};
+
   // 四选一选项缓存（wordId -> options）
   final Map<int, List<WordOption>> _optionsCache = {};
-  // 翻卡阶段评分缓存（wordId -> 评分），用于后续阶段出错时降级
-  final Map<int, ReviewRating> _flipRatings = {};
+  // 英译汉选择题选项缓存（wordId -> 中文释义选项）
+  final Map<int, List<WordOption>> _enToZhOptionsCache = {};
+  // 该词是否有可用中文释义（无则跳过英译汉环节）
+  final Map<int, bool> _enToZhAvailable = {};
 
   @override
   void initState() {
@@ -54,8 +61,73 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         _loading = false;
         _stage = _Stage.enToZh;
       });
+      _prepareStages();
+      _skipUnavailableEnToZh();
     } catch (e) {
       setState(() => _loading = false);
+    }
+  }
+
+  /// 跳过无中文释义的词（英译汉环节无法出题，不计对错）
+  void _skipUnavailableEnToZh() {
+    while (_index < _queue.length &&
+        !(_enToZhAvailable[_word['id'] as int] ?? false)) {
+      _index++;
+    }
+    if (_index >= _queue.length) {
+      _enterChooseWord();
+    }
+  }
+
+  /// 预生成两个环节的选项：
+  /// - 四选一（选单词）：看中文选英文
+  /// - 英译汉选择题：看英文选中文（正确项 = 该词释义；干扰项 = 其它词释义）
+  /// 释义来源：自定义释义优先，缺失时回退词典 translation；两者皆空则跳过英译汉环节。
+  void _prepareStages() {
+    _optionsCache.clear();
+    _enToZhOptionsCache.clear();
+    _enToZhAvailable.clear();
+    final repo = ref.read(wordRepositoryProvider);
+    final dict = ref.read(dictSourceProvider);
+
+    final defs = <int, String>{};
+    for (final w in _queue) {
+      var def = ((w['custom_def'] as String?) ?? '').trim();
+      if (def.isEmpty) {
+        final d = dict.lookup(w['word'] as String);
+        def = (d?.translation ?? '').trim();
+      }
+      defs[w['id'] as int] = def;
+      _enToZhAvailable[w['id'] as int] = def.isNotEmpty;
+    }
+
+    for (final w in _queue) {
+      final id = w['id'] as int;
+      _optionsCache[id] = repo.buildWordOptions(
+        w['word'] as String,
+        4,
+        correctDef: (w['custom_def'] as String?) ?? '',
+      );
+
+      final correctDef = defs[id] ?? '';
+      if (correctDef.isEmpty) {
+        _enToZhOptionsCache[id] = const [];
+        continue;
+      }
+      final correctWord = w['word'] as String;
+      final options = <WordOption>[
+        WordOption(word: correctWord, definition: correctDef),
+      ];
+      final seenDefs = <String>{correctDef};
+      for (final other in _queue) {
+        if (options.length >= 4) break;
+        final oid = other['id'] as int;
+        if (oid == id) continue;
+        final odef = defs[oid] ?? '';
+        if (odef.isEmpty || !seenDefs.add(odef)) continue;
+        options.add(WordOption(word: other['word'] as String, definition: odef));
+      }
+      _enToZhOptionsCache[id] = options..shuffle();
     }
   }
 
@@ -66,52 +138,31 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   Map<String, dynamic> get _word => _queue[_index];
   String get _currentWord => _word['word'] as String;
   String get _currentDef => ((_word['custom_def'] as String?) ?? '').trim();
-  String get _currentNote => (_word['note'] as String?) ?? '';
-  bool get _isNewWord =>
-      (_word['card_state'] as String? ?? 'new') == 'new' &&
-      ((_word['reps'] as int?) ?? 0) == 0;
-  int get _lapses => (_word['lapses'] as int?) ?? 0;
+
+  // 三环节统计（作答过才计数，跳过的环节不计）
+  int get _enToZhCorrect => _enToZhResults.values.where((v) => v).length;
+  int get _enToZhAnsweredCount => _enToZhResults.length;
 
   // ============================================================
-  //  阶段1：英译汉（FSRS 评分）
+  //  阶段1：英译汉（选择题，记录对错，不立即提交）
   // ============================================================
 
-  void _rate(ReviewRating rating) {
-    final wordId = _word['id'] as int;
-    _flipRatings[wordId] = rating; // 记录翻卡评分，供后续阶段联动
-    try {
-      final repo = ref.read(reviewRepositoryProvider);
-      repo.submitReview(wordId, rating);
-      ref.read(wordListVersionProvider.notifier).state++;
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('评分失败: $e')),
-      );
-      return;
-    }
+  void _enToZhAnswered(bool correct) {
+    _enToZhResults[_word['id'] as int] = correct;
     setState(() => _reviewedCount++);
-    _advanceFromEnToZh();
   }
 
   void _advanceFromEnToZh() {
     if (_index < _queue.length - 1) {
       setState(() => _index++);
+      _skipUnavailableEnToZh();
+      if (_index >= _queue.length) _enterChooseWord();
     } else {
       _enterChooseWord();
     }
   }
 
   void _enterChooseWord() {
-    // 预生成四选一选项（含释义）
-    _optionsCache.clear();
-    final repo = ref.read(wordRepositoryProvider);
-    for (final w in _queue) {
-      _optionsCache[w['id'] as int] = repo.buildWordOptions(
-        w['word'] as String,
-        4,
-        correctDef: (w['custom_def'] as String?) ?? '',
-      );
-    }
     setState(() {
       _index = 0;
       _chooseCorrect = 0;
@@ -128,10 +179,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       [WordOption(word: _currentWord, definition: _currentDef)];
 
   void _chooseAnswered(bool correct) {
+    _chooseResults[_word['id'] as int] = correct;
     if (correct) {
-      _chooseCorrect++;
-    } else {
-      _maybeDemote(_word['id'] as int);
+      setState(() => _chooseCorrect++);
     }
   }
 
@@ -152,22 +202,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   // ============================================================
 
   void _dictationAnswered(bool correct) {
+    _dictResults[_word['id'] as int] = correct;
     if (correct) {
-      _dictationCorrect++;
-    } else {
-      _maybeDemote(_word['id'] as int);
-    }
-  }
-
-  /// 若该词在翻卡阶段被主观判为"很轻松"，但后续客观测试出错，
-  /// 则降低其熟悉度（用 again 评分回退排程）。
-  void _maybeDemote(int wordId) {
-    if (_flipRatings[wordId] != ReviewRating.easy) return;
-    try {
-      ref.read(reviewRepositoryProvider).demoteWord(wordId);
-      ref.read(wordListVersionProvider.notifier).state++;
-    } catch (_) {
-      // 降级失败不影响主流程
+      setState(() => _dictationCorrect++);
     }
   }
 
@@ -175,8 +212,43 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     if (_index < _queue.length - 1) {
       setState(() => _index++);
     } else {
+      _commitAllReviews();
       setState(() => _stage = _Stage.done);
     }
+  }
+
+  /// 三环节全部结束后，按"各环节正确率"一次性写入 FSRS：
+  /// 全部正确 → easy（最高）；2/3 → good；1/3 → hard；全错 → again（最低）。
+  /// 跳过的环节不计入分母。
+  void _commitAllReviews() {
+    try {
+      final repo = ref.read(reviewRepositoryProvider);
+      for (final w in _queue) {
+        repo.submitReview(w['id'] as int, _ratingFor(w['id'] as int));
+      }
+      ref.read(wordListVersionProvider.notifier).state++;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存复习结果失败: $e')),
+        );
+      }
+    }
+  }
+
+  ReviewRating _ratingFor(int wordId) {
+    final results = [
+      _enToZhResults[wordId],
+      _chooseResults[wordId],
+      _dictResults[wordId],
+    ].where((r) => r != null).toList();
+    if (results.isEmpty) return ReviewRating.good; // 全部跳过 → 中性
+    final correct = results.where((r) => r!).length;
+    final ratio = correct / results.length;
+    if (ratio >= 1.0) return ReviewRating.easy;
+    if (ratio >= 2.0 / 3.0) return ReviewRating.good;
+    if (ratio >= 1.0 / 3.0) return ReviewRating.hard;
+    return ReviewRating.again;
   }
 
   // ============================================================
@@ -224,15 +296,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     switch (_stage) {
       case _Stage.enToZh:
         title = '英译汉 ${_index + 1} / $total';
-        card = EnToZhCard(
+        card = EnToZhChoiceCard(
           key: ValueKey('en2zh-${_word['id']}'),
           word: _currentWord,
           definition: _currentDef,
-          note: _currentNote,
-          isNew: _isNewWord,
-          lapses: _lapses,
-          onRate: _rate,
+          options: _enToZhOptionsCache[_word['id'] as int] ?? const [],
+          onAnswered: _enToZhAnswered,
+          onNext: _advanceFromEnToZh,
           onSkip: _advanceFromEnToZh,
+          isLast: _index == total - 1,
         );
       case _Stage.chooseWord:
         title = '选单词 ${_index + 1} / $total';
@@ -274,7 +346,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       body: Column(
         children: [
           LinearProgressIndicator(value: progress, minHeight: 3),
-          Expanded(child: card),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: card,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -306,8 +385,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   )),
               const SizedBox(height: 24),
-              _resultRow(theme, '英译汉', '$_reviewedCount 词', Icons.translate,
-                  AppColors.primary),
+              _resultRow(theme, '英译汉', '$_enToZhCorrect / $_enToZhAnsweredCount',
+                  Icons.translate, AppColors.primary),
               const SizedBox(height: 8),
               _resultRow(theme, '选单词', '$_chooseCorrect / $total',
                   Icons.checklist, AppColors.ratingEasy),

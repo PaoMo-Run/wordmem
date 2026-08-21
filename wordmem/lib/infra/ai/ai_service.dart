@@ -22,11 +22,17 @@ class AiRequest {
   final List<AiMessage> messages;
   final double temperature;
   final int maxTokens;
+  /// 是否开启深度思考（agnes Thinking mode 等推理能力）
+  final bool enableThinking;
+  /// 思考 token 预算（配合 [enableThinking]，如 2048/4096/8192）
+  final int thinkingBudgetTokens;
 
   const AiRequest({
     required this.messages,
     this.temperature = 0.7,
     this.maxTokens = 1024,
+    this.enableThinking = false,
+    this.thinkingBudgetTokens = 2048,
   });
 }
 

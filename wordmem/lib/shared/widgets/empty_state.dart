@@ -88,18 +88,18 @@ class LoadingIndicator extends StatelessWidget {
   }
 }
 
-/// 掌握状态颜色
+/// 掌握状态颜色（7 周期方案：已掌握为显式状态）
 Color masteryColor(String cardState, int reps, int lapses) {
+  if (cardState == 'mastered') return AppColors.statusMastered;
   if (cardState == 'new' && reps == 0) return AppColors.statusNew;
   if (cardState == 'learning' || cardState == 'relearning') return AppColors.statusLearning;
-  if (cardState == 'review' && reps >= 5 && lapses == 0) return AppColors.statusMastered;
   return AppColors.statusReview;
 }
 
 /// 掌握状态文字
 String masteryLabel(String cardState, int reps, int lapses) {
+  if (cardState == 'mastered') return '已掌握';
   if (cardState == 'new' && reps == 0) return '新词';
   if (cardState == 'learning' || cardState == 'relearning') return '学习中';
-  if (cardState == 'review' && reps >= 5 && lapses == 0) return '已掌握';
   return '熟悉';
 }

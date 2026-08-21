@@ -15,8 +15,8 @@ class DictSource {
       'SELECT * FROM dict_words WHERE word = ? COLLATE NOCASE LIMIT 1',
       [word],
     );
-    if (rows.isEmpty) return null;
-    return DictWord.fromMap(rows.first);
+    if (rows.isNotEmpty) return DictWord.fromMap(rows.first);
+    return null;
   }
 
   /// 词形反查
@@ -26,24 +26,28 @@ class DictSource {
     var result = lookup(word);
     if (result != null) return result;
 
-    // 2. 通过 exchange 字段反查
+    // 2. 通过 exchange 字段反查 + 词干提取
+    result = _lookupWithExchangeIn(_d, word);
+    return result;
+  }
+
+  /// 在指定词典连接上做 exchange 反查 + 词干提取
+  DictWord? _lookupWithExchangeIn(Database db, String word) {
     // exchange 格式: "p:ran/d:run/i:running/3:runs"
     final pattern = '%$word%';
-    final rows = _d.select(
+    final rows = db.select(
       'SELECT * FROM dict_words WHERE exchange LIKE ? LIMIT 1',
       [pattern],
     );
     if (rows.isNotEmpty) {
       return DictWord.fromMap(rows.first);
     }
-
-    // 3. 尝试去掉常见后缀
-    final stemResult = _stemLookup(word);
-    return stemResult;
+    // 尝试去掉常见后缀
+    return _stemLookup(db, word);
   }
 
   /// 简单词干提取
-  DictWord? _stemLookup(String word) {
+  DictWord? _stemLookup(Database db, String word) {
     final w = word.toLowerCase();
     final candidates = <String>[];
 
@@ -77,19 +81,87 @@ class DictSource {
     if (w.endsWith('est') && w.length > 4) candidates.add(w.substring(0, w.length - 3));
 
     for (final candidate in candidates) {
-      final result = lookup(candidate);
+      final result = _lookupIn(db, candidate);
       if (result != null) return result;
     }
     return null;
   }
 
-  /// 模糊搜索（前缀匹配）
-  List<DictWord> search(String query, {int limit = 20}) {
-    final rows = _d.select(
-      'SELECT * FROM dict_words WHERE word LIKE ? ORDER BY bnc ASC LIMIT ?',
-      ['${query.toLowerCase()}%', limit],
+  /// 在指定词典连接上精确查询（不跨库，供词干反查内部使用）
+  DictWord? _lookupIn(Database db, String word) {
+    final rows = db.select(
+      'SELECT * FROM dict_words WHERE word = ? COLLATE NOCASE LIMIT 1',
+      [word],
     );
-    return rows.map((r) => DictWord.fromMap(r)).toList();
+    if (rows.isEmpty) return null;
+    return DictWord.fromMap(rows.first);
+  }
+
+  /// 模糊搜索
+  /// - 含中文：按释义（translation）模糊匹配
+  /// - 纯英文：单词前缀匹配优先 + 释义模糊匹配补充
+  ///   （释义补充使缩写反查可用：搜 "AOA" 命中 "迎角（缩写 AOA）"）
+  List<DictWord> search(String query, {int limit = 20}) {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+    final result = <DictWord>[];
+    final seen = <String>{};
+    for (final w in _searchIn(_d, q, limit: limit)) {
+      if (seen.add(w.word.toLowerCase())) {
+        result.add(w);
+      }
+    }
+    return result.take(limit).toList();
+  }
+
+  /// 在指定词典连接上执行模糊搜索
+  List<DictWord> _searchIn(Database db, String query, {int limit = 20}) {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+    // 转义 LIKE 通配符，避免用户输入的 % _ \ 被当作通配
+    final escaped = q.replaceAll('\\', '\\\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    final isChinese = RegExp(r'[\u4e00-\u9fff]').hasMatch(q);
+    if (isChinese) {
+      final rows = db.select(
+        'SELECT * FROM dict_words WHERE translation LIKE ? '
+        'ESCAPE \'\\\' ORDER BY bnc ASC LIMIT ?',
+        ['%$escaped%', limit],
+      );
+      return rows.map((r) => DictWord.fromMap(r)).toList();
+    }
+
+    // 英文：先按单词前缀匹配
+    final byWord = db.select(
+      'SELECT * FROM dict_words WHERE word LIKE ? '
+      'ESCAPE \'\\\' ORDER BY bnc ASC LIMIT ?',
+      ['${escaped.toLowerCase()}%', limit],
+    );
+    if (byWord.length >= limit) {
+      return byWord.map((r) => DictWord.fromMap(r)).toList();
+    }
+    final seen = <String>{};
+    final result = <DictWord>[];
+    for (final r in byWord) {
+      final w = DictWord.fromMap(r);
+      if (seen.add(w.word)) result.add(w);
+    }
+    // 再补充释义命中（缩写反查：AOA -> 迎角（缩写 AOA））
+    // 太短的查询（<3 字符）命中面过广，只搜单词前缀
+    if (escaped.length >= 3) {
+      final byTrans = db.select(
+        'SELECT * FROM dict_words WHERE translation LIKE ? '
+        'ESCAPE \'\\\' ORDER BY bnc ASC LIMIT ?',
+        ['%$escaped%', limit],
+      );
+      for (final r in byTrans) {
+        if (result.length >= limit) break;
+        final w = DictWord.fromMap(r);
+        if (seen.add(w.word)) result.add(w);
+      }
+    }
+    return result;
   }
 
   /// 批量查询多个单词

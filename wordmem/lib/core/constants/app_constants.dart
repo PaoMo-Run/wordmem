@@ -6,7 +6,7 @@ class AppConstants {
   static const String appNameEn = 'WordMem';
 
   /// 应用版本号（与 pubspec.yaml 保持一致，用于"关于"页展示）
-  static const String appVersion = '1.1.3';
+  static const String appVersion = '1.4.13';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。
@@ -21,10 +21,10 @@ class AppConstants {
   static const double minDesiredRetention = 0.8;
   static const double maxDesiredRetention = 0.95;
 
-  // 词典文件
-  static const String dictDbName = 'ecdict_mini.db';
-  static const String dictVersion = 'ecdict_mini_v2';
-  static const int dictWordCount = 14945;
+  // 词典文件（唯一内置：专业版，含航空专业词）
+  static const String dictProDbName = 'ecdict_pro.db';
+  static const String dictProVersion = 'ecdict_pro_v3';
+  static const int dictProWordCount = 15529;
 
   // 个人词库数据库
   static const String vocabDbName = 'vocabulary.db';

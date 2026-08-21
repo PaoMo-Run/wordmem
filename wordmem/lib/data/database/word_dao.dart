@@ -156,12 +156,12 @@ class WordDao {
     return _v.select(sql, args);
   }
 
-  /// 获取待复习单词（due <= now）
+  /// 获取待复习单词（due <= now，排除新词与已掌握）
   List<Map<String, dynamic>> getDueWords({int limit = 100}) {
     final now = DateTime.now().toUtc().toIso8601String();
     return _v.select(
-      'SELECT * FROM user_words WHERE due <= ? AND card_state != ? ORDER BY due ASC LIMIT ?',
-      [now, 'new', limit],
+      "SELECT * FROM user_words WHERE due <= ? AND card_state NOT IN ('new', 'mastered') ORDER BY due ASC LIMIT ?",
+      [now, limit],
     );
   }
 
@@ -172,6 +172,35 @@ class WordDao {
       'SELECT * FROM user_words WHERE card_state = ? AND due <= ? ORDER BY created_at ASC LIMIT ?',
       ['new', now, limit],
     );
+  }
+
+  /// 今日学习过的单词（今日新增 UNION 今日复习，去重保序）——供「今日短文」取词
+  List<String> getWordsStudiedToday() {
+    final rows = _v.select(
+      '''SELECT DISTINCT uw.word FROM user_words uw
+         WHERE uw.created_at >= ?
+         UNION
+         SELECT DISTINCT uw.word FROM review_logs rl
+         JOIN user_words uw ON uw.id = rl.user_word_id
+         WHERE rl.reviewed_at >= ?''',
+      [_todayUtcStart(), _todayUtcStart()],
+    );
+    return rows.map((r) => r['word'] as String).toList();
+  }
+
+  /// 获取词库全部单词文本（供"指定单词"多选列表）
+  List<String> getAllWordTexts({int limit = 2000}) {
+    final rows = _v.select(
+      'SELECT word FROM user_words ORDER BY word COLLATE NOCASE ASC LIMIT ?',
+      [limit],
+    );
+    return rows.map((r) => r['word'] as String).toList();
+  }
+
+  /// 今日 UTC 起始时刻
+  static String _todayUtcStart() {
+    final now = DateTime.now().toUtc();
+    return DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
   }
 
   /// 按添加日期范围查询（用于自选复习）

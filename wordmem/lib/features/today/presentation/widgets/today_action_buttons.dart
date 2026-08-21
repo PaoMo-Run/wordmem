@@ -9,6 +9,8 @@ class TodayActionButtons extends StatelessWidget {
   final VoidCallback onCustomReview;
   final VoidCallback onSynonymChallenge;
   final VoidCallback onTextImport;
+  final VoidCallback onStory;
+  final VoidCallback onStoryMemory;
 
   const TodayActionButtons({
     super.key,
@@ -18,6 +20,8 @@ class TodayActionButtons extends StatelessWidget {
     required this.onCustomReview,
     required this.onSynonymChallenge,
     required this.onTextImport,
+    required this.onStory,
+    required this.onStoryMemory,
   });
 
   @override
@@ -65,6 +69,26 @@ class TodayActionButtons extends StatelessWidget {
             onPressed: stats.totalWords > 0 ? onSynonymChallenge : null,
             icon: const Icon(Icons.hub_outlined),
             label: const Text('近义词挑战'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 今日短文（AI 优先生成，模板兜底）
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.tonalIcon(
+            onPressed: stats.totalWords > 0 ? onStory : null,
+            icon: const Icon(Icons.auto_stories_outlined),
+            label: const Text('今日短文'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 短文记忆库
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onStoryMemory,
+            icon: const Icon(Icons.bookmarks_outlined),
+            label: const Text('短文记忆库'),
           ),
         ),
         const SizedBox(height: 12),

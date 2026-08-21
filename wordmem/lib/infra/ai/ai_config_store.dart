@@ -12,6 +12,8 @@ class AiConfigStore {
   static const _kBaseUrl = 'ai.base_url';
   static const _kModel = 'ai.model';
   static const _kTimeout = 'ai.timeout';
+  static const _kThinkingLevel = 'ai.thinking_level';
+  static const _kEnableThinking = 'ai.enable_thinking';
   static const _kApiKey = 'ai.api_key';
 
   final FlutterSecureStorage _secure;
@@ -30,6 +32,9 @@ class AiConfigStore {
       apiKey: await _secure.read(key: _kApiKey) ?? '',
       model: p?.getString(_kModel) ?? AiPresets.deepseek.defaultModel,
       timeoutSeconds: p?.getInt(_kTimeout) ?? 30,
+      enableThinking: p?.getBool(_kEnableThinking) ?? true,
+      thinkingLevel:
+          AiThinkingLevel.fromName(p?.getString(_kThinkingLevel)),
     );
   }
 
@@ -40,6 +45,8 @@ class AiConfigStore {
     await p?.setString(_kBaseUrl, config.baseUrl);
     await p?.setString(_kModel, config.model);
     await p?.setInt(_kTimeout, config.timeoutSeconds);
+    await p?.setBool(_kEnableThinking, config.enableThinking);
+    await p?.setString(_kThinkingLevel, config.thinkingLevel.name);
     if (config.apiKey.isNotEmpty) {
       await _secure.write(key: _kApiKey, value: config.apiKey);
     }

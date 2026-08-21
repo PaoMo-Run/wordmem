@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../domain/models/stats.dart';
 import '../../../core/theme/colors.dart';
@@ -61,7 +62,8 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             )
           : RefreshIndicator(
               onRefresh: () async => _loadData(),
-              child: ListView(
+              child: AdaptiveContent(
+                child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
                   // 概览卡片
@@ -117,6 +119,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
     );
@@ -414,14 +417,26 @@ class _YAxis extends StatelessWidget {
       color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
     );
     return SizedBox(
-      width: 28,
+      width: 32,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text('$maxValue', style: style),
-          Text('$mid', style: style),
-          Text('0', style: style),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text('$maxValue', style: style),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text('$mid', style: style),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text('0', style: style),
+          ),
         ],
       ),
     );

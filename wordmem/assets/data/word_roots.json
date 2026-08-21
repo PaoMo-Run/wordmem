@@ -1,0 +1,1282 @@
+[
+ {
+  "root": "spect",
+  "variants": [
+   "spic",
+   "spec"
+  ],
+  "meaning": "看",
+  "meaningEn": "look",
+  "examples": [
+   "inspect",
+   "respect",
+   "spectator",
+   "perspective",
+   "expect"
+  ]
+ },
+ {
+  "root": "port",
+  "variants": [],
+  "meaning": "搬运",
+  "meaningEn": "carry",
+  "examples": [
+   "transport",
+   "export",
+   "import",
+   "portable",
+   "report"
+  ]
+ },
+ {
+  "root": "dict",
+  "variants": [],
+  "meaning": "说",
+  "meaningEn": "say",
+  "examples": [
+   "dictionary",
+   "predict",
+   "contradict",
+   "dictation"
+  ]
+ },
+ {
+  "root": "scrib",
+  "variants": [
+   "script"
+  ],
+  "meaning": "写",
+  "meaningEn": "write",
+  "examples": [
+   "describe",
+   "subscribe",
+   "manuscript",
+   "script"
+  ]
+ },
+ {
+  "root": "vis",
+  "variants": [
+   "vid"
+  ],
+  "meaning": "看见",
+  "meaningEn": "see",
+  "examples": [
+   "visible",
+   "television",
+   "video",
+   "vision",
+   "visit"
+  ]
+ },
+ {
+  "root": "aud",
+  "variants": [],
+  "meaning": "听",
+  "meaningEn": "hear",
+  "examples": [
+   "audio",
+   "audience",
+   "auditorium",
+   "audible"
+  ]
+ },
+ {
+  "root": "graph",
+  "variants": [],
+  "meaning": "写、画",
+  "meaningEn": "write, draw",
+  "examples": [
+   "photograph",
+   "autograph",
+   "geography",
+   "paragraph"
+  ]
+ },
+ {
+  "root": "bio",
+  "variants": [],
+  "meaning": "生命",
+  "meaningEn": "life",
+  "examples": [
+   "biology",
+   "biography",
+   "antibiotic",
+   "biography"
+  ]
+ },
+ {
+  "root": "tele",
+  "variants": [],
+  "meaning": "远",
+  "meaningEn": "far",
+  "examples": [
+   "telephone",
+   "television",
+   "telescope",
+   "telegram"
+  ]
+ },
+ {
+  "root": "phon",
+  "variants": [],
+  "meaning": "声音",
+  "meaningEn": "sound",
+  "examples": [
+   "telephone",
+   "microphone",
+   "symphony",
+   "phonetic"
+  ]
+ },
+ {
+  "root": "ject",
+  "variants": [],
+  "meaning": "投掷",
+  "meaningEn": "throw",
+  "examples": [
+   "project",
+   "inject",
+   "reject",
+   "subject",
+   "object"
+  ]
+ },
+ {
+  "root": "vert",
+  "variants": [
+   "vers"
+  ],
+  "meaning": "转",
+  "meaningEn": "turn",
+  "examples": [
+   "convert",
+   "reverse",
+   "vertical",
+   "advertise",
+   "version"
+  ]
+ },
+ {
+  "root": "duct",
+  "variants": [
+   "duc"
+  ],
+  "meaning": "引导",
+  "meaningEn": "lead",
+  "examples": [
+   "conduct",
+   "introduce",
+   "produce",
+   "education"
+  ]
+ },
+ {
+  "root": "struct",
+  "variants": [],
+  "meaning": "建造",
+  "meaningEn": "build",
+  "examples": [
+   "construct",
+   "destruct",
+   "instruction",
+   "structure"
+  ]
+ },
+ {
+  "root": "tract",
+  "variants": [],
+  "meaning": "拉",
+  "meaningEn": "pull",
+  "examples": [
+   "attract",
+   "tractor",
+   "extract",
+   "contract"
+  ]
+ },
+ {
+  "root": "form",
+  "variants": [],
+  "meaning": "形状",
+  "meaningEn": "shape",
+  "examples": [
+   "transform",
+   "format",
+   "reform",
+   "information"
+  ]
+ },
+ {
+  "root": "press",
+  "variants": [],
+  "meaning": "压",
+  "meaningEn": "press",
+  "examples": [
+   "express",
+   "impress",
+   "compress",
+   "pressure"
+  ]
+ },
+ {
+  "root": "act",
+  "variants": [],
+  "meaning": "做",
+  "meaningEn": "do",
+  "examples": [
+   "action",
+   "active",
+   "react",
+   "activity"
+  ]
+ },
+ {
+  "root": "ceed",
+  "variants": [
+   "cess",
+   "cede"
+  ],
+  "meaning": "走",
+  "meaningEn": "go",
+  "examples": [
+   "proceed",
+   "exceed",
+   "success",
+   "access",
+   "process"
+  ]
+ },
+ {
+  "root": "mit",
+  "variants": [
+   "miss"
+  ],
+  "meaning": "发送",
+  "meaningEn": "send",
+  "examples": [
+   "transmit",
+   "admit",
+   "mission",
+   "commit",
+   "submit"
+  ]
+ },
+ {
+  "root": "pos",
+  "variants": [
+   "pon",
+   "pound"
+  ],
+  "meaning": "放置",
+  "meaningEn": "put",
+  "examples": [
+   "position",
+   "expose",
+   "compose",
+   "opponent",
+   "component"
+  ]
+ },
+ {
+  "root": "pend",
+  "variants": [
+   "pens"
+  ],
+  "meaning": "悬挂",
+  "meaningEn": "hang",
+  "examples": [
+   "depend",
+   "suspend",
+   "pension",
+   "expensive"
+  ]
+ },
+ {
+  "root": "tend",
+  "variants": [
+   "tens"
+  ],
+  "meaning": "伸展",
+  "meaningEn": "stretch",
+  "examples": [
+   "extend",
+   "intend",
+   "tension",
+   "attention"
+  ]
+ },
+ {
+  "root": "fer",
+  "variants": [],
+  "meaning": "携带",
+  "meaningEn": "carry",
+  "examples": [
+   "transfer",
+   "prefer",
+   "refer",
+   "differ",
+   "conference"
+  ]
+ },
+ {
+  "root": "cur",
+  "variants": [
+   "curs",
+   "cours"
+  ],
+  "meaning": "跑",
+  "meaningEn": "run",
+  "examples": [
+   "current",
+   "occur",
+   "course",
+   "currency"
+  ]
+ },
+ {
+  "root": "ven",
+  "variants": [
+   "vent"
+  ],
+  "meaning": "来",
+  "meaningEn": "come",
+  "examples": [
+   "prevent",
+   "invent",
+   "convention",
+   "avenue",
+   "adventure"
+  ]
+ },
+ {
+  "root": "cept",
+  "variants": [
+   "cap",
+   "capt"
+  ],
+  "meaning": "拿取",
+  "meaningEn": "take",
+  "examples": [
+   "accept",
+   "except",
+   "concept",
+   "capture",
+   "receive"
+  ]
+ },
+ {
+  "root": "tain",
+  "variants": [
+   "ten",
+   "tin"
+  ],
+  "meaning": "保持",
+  "meaningEn": "hold",
+  "examples": [
+   "contain",
+   "maintain",
+   "retain",
+   "continue",
+   "content"
+  ]
+ },
+ {
+  "root": "sta",
+  "variants": [
+   "sist",
+   "stit"
+  ],
+  "meaning": "站立",
+  "meaningEn": "stand",
+  "examples": [
+   "station",
+   "consist",
+   "constitute",
+   "instant",
+   "state"
+  ]
+ },
+ {
+  "root": "cred",
+  "variants": [],
+  "meaning": "相信",
+  "meaningEn": "believe",
+  "examples": [
+   "credit",
+   "credible",
+   "incredible",
+   "credential"
+  ]
+ },
+ {
+  "root": "fid",
+  "variants": [],
+  "meaning": "信任",
+  "meaningEn": "trust",
+  "examples": [
+   "confident",
+   "fidelity",
+   "confidential"
+  ]
+ },
+ {
+  "root": "sci",
+  "variants": [],
+  "meaning": "知道",
+  "meaningEn": "know",
+  "examples": [
+   "science",
+   "conscious",
+   "scientific"
+  ]
+ },
+ {
+  "root": "cogn",
+  "variants": [],
+  "meaning": "知道",
+  "meaningEn": "know",
+  "examples": [
+   "recognize",
+   "cognition",
+   "cognitive"
+  ]
+ },
+ {
+  "root": "sent",
+  "variants": [
+   "sens"
+  ],
+  "meaning": "感觉",
+  "meaningEn": "feel",
+  "examples": [
+   "sense",
+   "sensitive",
+   "consent",
+   "sentence"
+  ]
+ },
+ {
+  "root": "path",
+  "variants": [
+   "pass"
+  ],
+  "meaning": "感受、病",
+  "meaningEn": "feel, suffer",
+  "examples": [
+   "sympathy",
+   "pathology",
+   "passion",
+   "patient"
+  ]
+ },
+ {
+  "root": "anim",
+  "variants": [],
+  "meaning": "生命、精神",
+  "meaningEn": "life, mind",
+  "examples": [
+   "animal",
+   "animate",
+   "unanimous"
+  ]
+ },
+ {
+  "root": "spir",
+  "variants": [],
+  "meaning": "呼吸",
+  "meaningEn": "breathe",
+  "examples": [
+   "inspire",
+   "expire",
+   "respire",
+   "spirit"
+  ]
+ },
+ {
+  "root": "voc",
+  "variants": [
+   "vok"
+  ],
+  "meaning": "呼喊",
+  "meaningEn": "call",
+  "examples": [
+   "vocal",
+   "vocabulary",
+   "revoke",
+   "advocate"
+  ]
+ },
+ {
+  "root": "claim",
+  "variants": [
+   "clam"
+  ],
+  "meaning": "喊叫",
+  "meaningEn": "shout",
+  "examples": [
+   "claim",
+   "proclaim",
+   "exclaim",
+   "acclaim"
+  ]
+ },
+ {
+  "root": "loc",
+  "variants": [],
+  "meaning": "地方",
+  "meaningEn": "place",
+  "examples": [
+   "local",
+   "location",
+   "allocate",
+   "locate"
+  ]
+ },
+ {
+  "root": "mot",
+  "variants": [
+   "mov",
+   "mob"
+  ],
+  "meaning": "移动",
+  "meaningEn": "move",
+  "examples": [
+   "motion",
+   "mobile",
+   "remove",
+   "automobile",
+   "promote"
+  ]
+ },
+ {
+  "root": "ped",
+  "variants": [],
+  "meaning": "脚",
+  "meaningEn": "foot",
+  "examples": [
+   "pedal",
+   "pedestrian",
+   "expedition",
+   "impede"
+  ]
+ },
+ {
+  "root": "man",
+  "variants": [
+   "manu"
+  ],
+  "meaning": "手",
+  "meaningEn": "hand",
+  "examples": [
+   "manual",
+   "manage",
+   "manufacture",
+   "manuscript"
+  ]
+ },
+ {
+  "root": "corp",
+  "variants": [],
+  "meaning": "身体",
+  "meaningEn": "body",
+  "examples": [
+   "corporation",
+   "corporal",
+   "corps",
+   "corporate"
+  ]
+ },
+ {
+  "root": "dent",
+  "variants": [],
+  "meaning": "牙齿",
+  "meaningEn": "tooth",
+  "examples": [
+   "dental",
+   "dentist",
+   "dentist"
+  ]
+ },
+ {
+  "root": "mar",
+  "variants": [],
+  "meaning": "海",
+  "meaningEn": "sea",
+  "examples": [
+   "marine",
+   "maritime",
+   "submarine"
+  ]
+ },
+ {
+  "root": "terr",
+  "variants": [],
+  "meaning": "土地",
+  "meaningEn": "earth",
+  "examples": [
+   "territory",
+   "terrain",
+   "terrace",
+   "mediterranean"
+  ]
+ },
+ {
+  "root": "aqua",
+  "variants": [],
+  "meaning": "水",
+  "meaningEn": "water",
+  "examples": [
+   "aquatic",
+   "aquarium",
+   "aqueduct"
+  ]
+ },
+ {
+  "root": "hydr",
+  "variants": [],
+  "meaning": "水",
+  "meaningEn": "water",
+  "examples": [
+   "hydrogen",
+   "hydraulic",
+   "hydroelectric"
+  ]
+ },
+ {
+  "root": "astr",
+  "variants": [
+   "aster"
+  ],
+  "meaning": "星星",
+  "meaningEn": "star",
+  "examples": [
+   "astronomy",
+   "astronaut",
+   "disaster",
+   "asteroid"
+  ]
+ },
+ {
+  "root": "sol",
+  "variants": [],
+  "meaning": "太阳",
+  "meaningEn": "sun",
+  "examples": [
+   "solar",
+   "solstice",
+   "parasol"
+  ]
+ },
+ {
+  "root": "lun",
+  "variants": [],
+  "meaning": "月亮",
+  "meaningEn": "moon",
+  "examples": [
+   "lunar",
+   "lunatic"
+  ]
+ },
+ {
+  "root": "ann",
+  "variants": [
+   "enn"
+  ],
+  "meaning": "年",
+  "meaningEn": "year",
+  "examples": [
+   "annual",
+   "anniversary",
+   "centennial",
+   "annual"
+  ]
+ },
+ {
+  "root": "temp",
+  "variants": [],
+  "meaning": "时间",
+  "meaningEn": "time",
+  "examples": [
+   "temporary",
+   "contemporary",
+   "tempo"
+  ]
+ },
+ {
+  "root": "chron",
+  "variants": [],
+  "meaning": "时间",
+  "meaningEn": "time",
+  "examples": [
+   "chronic",
+   "chronology",
+   "synchronize",
+   "chronicle"
+  ]
+ },
+ {
+  "root": "prim",
+  "variants": [
+   "prin"
+  ],
+  "meaning": "第一",
+  "meaningEn": "first",
+  "examples": [
+   "primary",
+   "prime",
+   "principle",
+   "primitive"
+  ]
+ },
+ {
+  "root": "fin",
+  "variants": [],
+  "meaning": "结束",
+  "meaningEn": "end",
+  "examples": [
+   "final",
+   "finish",
+   "define",
+   "infinite",
+   "finance"
+  ]
+ },
+ {
+  "root": "cent",
+  "variants": [],
+  "meaning": "百",
+  "meaningEn": "hundred",
+  "examples": [
+   "century",
+   "percent",
+   "centimeter"
+  ]
+ },
+ {
+  "root": "uni",
+  "variants": [],
+  "meaning": "一",
+  "meaningEn": "one",
+  "examples": [
+   "unite",
+   "uniform",
+   "university",
+   "unique"
+  ]
+ },
+ {
+  "root": "bi",
+  "variants": [],
+  "meaning": "二",
+  "meaningEn": "two",
+  "examples": [
+   "bicycle",
+   "bilingual",
+   "billion",
+   "binary"
+  ]
+ },
+ {
+  "root": "tri",
+  "variants": [],
+  "meaning": "三",
+  "meaningEn": "three",
+  "examples": [
+   "triangle",
+   "tripod",
+   "triple"
+  ]
+ },
+ {
+  "root": "semi",
+  "variants": [],
+  "meaning": "半",
+  "meaningEn": "half",
+  "examples": [
+   "semicircle",
+   "semifinal",
+   "semiconductor"
+  ]
+ },
+ {
+  "root": "mono",
+  "variants": [],
+  "meaning": "单一",
+  "meaningEn": "single",
+  "examples": [
+   "monopoly",
+   "monologue",
+   "monitor"
+  ]
+ },
+ {
+  "root": "poly",
+  "variants": [],
+  "meaning": "多",
+  "meaningEn": "many",
+  "examples": [
+   "polytechnic",
+   "polygon"
+  ]
+ },
+ {
+  "root": "multi",
+  "variants": [],
+  "meaning": "多",
+  "meaningEn": "many",
+  "examples": [
+   "multiple",
+   "multiply",
+   "multimedia"
+  ]
+ },
+ {
+  "root": "magn",
+  "variants": [
+   "mag"
+  ],
+  "meaning": "大",
+  "meaningEn": "great",
+  "examples": [
+   "magnificent",
+   "magnify",
+   "magazine"
+  ]
+ },
+ {
+  "root": "min",
+  "variants": [],
+  "meaning": "小",
+  "meaningEn": "small",
+  "examples": [
+   "minimum",
+   "minority",
+   "minute",
+   "diminish"
+  ]
+ },
+ {
+  "root": "brev",
+  "variants": [],
+  "meaning": "短",
+  "meaningEn": "short",
+  "examples": [
+   "brief",
+   "abbreviation",
+   "brevity"
+  ]
+ },
+ {
+  "root": "long",
+  "variants": [],
+  "meaning": "长",
+  "meaningEn": "long",
+  "examples": [
+   "longitude",
+   "prolong",
+   "length"
+  ]
+ },
+ {
+  "root": "fort",
+  "variants": [],
+  "meaning": "强",
+  "meaningEn": "strong",
+  "examples": [
+   "fortune",
+   "effort",
+   "fortify",
+   "comfort"
+  ]
+ },
+ {
+  "root": "val",
+  "variants": [
+   "vail"
+  ],
+  "meaning": "价值、力量",
+  "meaningEn": "worth, strong",
+  "examples": [
+   "value",
+   "valid",
+   "prevail",
+   "available"
+  ]
+ },
+ {
+  "root": "ver",
+  "variants": [],
+  "meaning": "真实",
+  "meaningEn": "true",
+  "examples": [
+   "very",
+   "verify",
+   "verdict",
+   "version"
+  ]
+ },
+ {
+  "root": "just",
+  "variants": [
+   "jur",
+   "jud"
+  ],
+  "meaning": "法律、公正",
+  "meaningEn": "law, right",
+  "examples": [
+   "justice",
+   "jury",
+   "judge",
+   "justify"
+  ]
+ },
+ {
+  "root": "leg",
+  "variants": [],
+  "meaning": "法律",
+  "meaningEn": "law",
+  "examples": [
+   "legal",
+   "legislation",
+   "illegal",
+   "college"
+  ]
+ },
+ {
+  "root": "civ",
+  "variants": [],
+  "meaning": "公民",
+  "meaningEn": "citizen",
+  "examples": [
+   "civil",
+   "civilization",
+   "civilian"
+  ]
+ },
+ {
+  "root": "urb",
+  "variants": [],
+  "meaning": "城市",
+  "meaningEn": "city",
+  "examples": [
+   "urban",
+   "suburb",
+   "suburban"
+  ]
+ },
+ {
+  "root": "nat",
+  "variants": [],
+  "meaning": "出生",
+  "meaningEn": "born",
+  "examples": [
+   "nation",
+   "native",
+   "natural",
+   "international"
+  ]
+ },
+ {
+  "root": "gen",
+  "variants": [],
+  "meaning": "出生、种类",
+  "meaningEn": "birth, kind",
+  "examples": [
+   "generate",
+   "general",
+   "genius",
+   "genetic"
+  ]
+ },
+ {
+  "root": "viv",
+  "variants": [
+   "vit"
+  ],
+  "meaning": "生命",
+  "meaningEn": "life",
+  "examples": [
+   "vivid",
+   "vital",
+   "survive",
+   "revive",
+   "vitamin"
+  ]
+ },
+ {
+  "root": "mort",
+  "variants": [],
+  "meaning": "死亡",
+  "meaningEn": "death",
+  "examples": [
+   "mortal",
+   "mortgage",
+   "immortal"
+  ]
+ },
+ {
+  "root": "nov",
+  "variants": [],
+  "meaning": "新",
+  "meaningEn": "new",
+  "examples": [
+   "novel",
+   "innovate",
+   "renovate",
+   "novice"
+  ]
+ },
+ {
+  "root": "sen",
+  "variants": [],
+  "meaning": "老",
+  "meaningEn": "old",
+  "examples": [
+   "senior",
+   "senate",
+   "seniority"
+  ]
+ },
+ {
+  "root": "liber",
+  "variants": [],
+  "meaning": "自由",
+  "meaningEn": "free",
+  "examples": [
+   "liberty",
+   "liberal",
+   "liberate"
+  ]
+ },
+ {
+  "root": "grat",
+  "variants": [],
+  "meaning": "感激",
+  "meaningEn": "pleasing",
+  "examples": [
+   "grateful",
+   "gratitude",
+   "congratulate"
+  ]
+ },
+ {
+  "root": "plic",
+  "variants": [
+   "plex",
+   "ply"
+  ],
+  "meaning": "折叠",
+  "meaningEn": "fold",
+  "examples": [
+   "complicate",
+   "apply",
+   "imply",
+   "complex",
+   "multiply"
+  ]
+ },
+ {
+  "root": "fact",
+  "variants": [
+   "fect",
+   "fic"
+  ],
+  "meaning": "制作",
+  "meaningEn": "make",
+  "examples": [
+   "factory",
+   "effect",
+   "perfect",
+   "office",
+   "fiction"
+  ]
+ },
+ {
+  "root": "flu",
+  "variants": [
+   "flux"
+  ],
+  "meaning": "流动",
+  "meaningEn": "flow",
+  "examples": [
+   "fluid",
+   "fluent",
+   "influence",
+   "fluctuate"
+  ]
+ },
+ {
+  "root": "grad",
+  "variants": [
+   "gress"
+  ],
+  "meaning": "步",
+  "meaningEn": "step",
+  "examples": [
+   "graduate",
+   "progress",
+   "aggressive",
+   "grade"
+  ]
+ },
+ {
+  "root": "sect",
+  "variants": [
+   "seg"
+  ],
+  "meaning": "切",
+  "meaningEn": "cut",
+  "examples": [
+   "section",
+   "insect",
+   "segment",
+   "sector"
+  ]
+ },
+ {
+  "root": "sign",
+  "variants": [],
+  "meaning": "标记",
+  "meaningEn": "sign",
+  "examples": [
+   "signal",
+   "design",
+   "signify",
+   "signature"
+  ]
+ },
+ {
+  "root": "solv",
+  "variants": [
+   "solu"
+  ],
+  "meaning": "解开",
+  "meaningEn": "loosen",
+  "examples": [
+   "solve",
+   "solution",
+   "absolute",
+   "resolve"
+  ]
+ },
+ {
+  "root": "volv",
+  "variants": [
+   "volu"
+  ],
+  "meaning": "滚动",
+  "meaningEn": "roll",
+  "examples": [
+   "revolve",
+   "revolution",
+   "involve",
+   "volume"
+  ]
+ },
+ {
+  "root": "prehend",
+  "variants": [
+   "prehens"
+  ],
+  "meaning": "抓住",
+  "meaningEn": "grasp",
+  "examples": [
+   "comprehend",
+   "comprehensive",
+   "apprehend"
+  ]
+ },
+ {
+  "root": "string",
+  "variants": [
+   "strict"
+  ],
+  "meaning": "拉紧",
+  "meaningEn": "tight",
+  "examples": [
+   "strict",
+   "restrict",
+   "constraint",
+   "stringent"
+  ]
+ },
+ {
+  "root": "sist",
+  "variants": [],
+  "meaning": "站立",
+  "meaningEn": "stand",
+  "examples": [
+   "assist",
+   "resist",
+   "insist",
+   "persist"
+  ]
+ },
+ {
+  "root": "merge",
+  "variants": [
+   "mers"
+  ],
+  "meaning": "沉、浸",
+  "meaningEn": "sink, dip",
+  "examples": [
+   "emerge",
+   "immerse",
+   "submerge",
+   "merge"
+  ]
+ },
+ {
+  "root": "duce",
+  "variants": [
+   "duct"
+  ],
+  "meaning": "引导",
+  "meaningEn": "lead",
+  "examples": [
+   "reduce",
+   "deduce",
+   "seduce",
+   "induct"
+  ]
+ },
+ {
+  "root": "meter",
+  "variants": [
+   "metr"
+  ],
+  "meaning": "测量",
+  "meaningEn": "measure",
+  "examples": [
+   "meter",
+   "diameter",
+   "thermometer",
+   "geometry"
+  ]
+ },
+ {
+  "root": "arch",
+  "variants": [],
+  "meaning": "首领、首要",
+  "meaningEn": "chief",
+  "examples": [
+   "monarch",
+   "archive",
+   "architect",
+   "hierarchy"
+  ]
+ },
+ {
+  "root": "auto",
+  "variants": [],
+  "meaning": "自己",
+  "meaningEn": "self",
+  "examples": [
+   "automatic",
+   "automobile",
+   "autonomy",
+   "autograph"
+  ]
+ }
+]

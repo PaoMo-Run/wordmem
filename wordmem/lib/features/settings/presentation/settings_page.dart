@@ -30,7 +30,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         children: [
           // 复习设置
-          _SectionHeader('复习设置'),
+          const _SectionHeader('复习设置'),
           ListTile(
             leading: const Icon(Icons.psychology_outlined),
             title: const Text('目标记忆率'),
@@ -60,7 +60,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const Divider(),
 
           // 提醒设置
-          _SectionHeader('提醒设置'),
+          const _SectionHeader('提醒设置'),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('每日提醒'),
@@ -122,7 +122,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const Divider(),
 
           // 外观
-          _SectionHeader('外观'),
+          const _SectionHeader('外观'),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
             title: const Text('主题模式'),
@@ -141,7 +141,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const Divider(),
 
           // AI 服务（未来短文生成 / 陪练的接入端口）
-          _SectionHeader('AI 服务'),
+          const _SectionHeader('AI 服务'),
           Consumer(builder: (context, ref, _) {
             final aiCfg = ref.watch(aiConfigProvider);
             return ListTile(
@@ -158,7 +158,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const Divider(),
 
           // 数据管理
-          _SectionHeader('数据管理'),
+          const _SectionHeader('数据管理'),
           ListTile(
             leading: const Icon(Icons.upload_outlined),
             title: const Text('导出备份'),
@@ -180,13 +180,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 );
                 if (savePath == null) return; // 用户取消选择
 
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('备份已导出')),
                   );
                 }
               } catch (e) {
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('导出失败: $e')),
                   );
@@ -204,6 +204,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 allowedExtensions: ['zip'],
               );
               if (result == null || result.files.single.path == null) return;
+              if (!context.mounted) return;
 
               // 选择导入模式：覆盖 / 续写 / 取消
               final mode = await showDialog<String>(
@@ -236,7 +237,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   // 触发词库刷新信号，让词库/今日页立即重载
                   ref.read(wordListVersionProvider.notifier).state++;
                 }
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(
                       importResult.success
@@ -248,7 +249,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   );
                 }
               } catch (e) {
-                if (mounted) {
+                if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('导入失败: $e')),
                   );
@@ -260,30 +261,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const Divider(),
 
           // 词典信息
-          _SectionHeader('词典信息'),
-          ListTile(
-            leading: const Icon(Icons.menu_book_outlined),
-            title: const Text('内置词典'),
-            subtitle: Text('ECDICT 精简版\n版本: ${AppConstants.dictVersion}\n词条数: ${AppConstants.dictWordCount}'),
+          const _SectionHeader('词典信息'),
+          const ListTile(
+            leading: Icon(Icons.menu_book_outlined),
+            title: Text('内置词典'),
+            subtitle: Text('专业版 ECDICT（含航空专业词）\n版本: ${AppConstants.dictProVersion}\n词条数: ${AppConstants.dictProWordCount}'),
           ),
 
           const Divider(),
 
           // 关于
-          _SectionHeader('关于'),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('词记'),
+          const _SectionHeader('关于'),
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('词记'),
             subtitle: Text('版本 ${AppConstants.appVersion}\n离线英语词库与间隔复习'),
           ),
-          ListTile(
-            leading: const Icon(Icons.shield_outlined),
-            title: const Text('隐私'),
-            subtitle: const Text('学习数据默认仅存本机；仅当你主动使用 AI 功能时，当日学习数据才会发送给所选 AI 服务商。'),
+          const ListTile(
+            leading: Icon(Icons.shield_outlined),
+            title: Text('隐私'),
+            subtitle: Text('学习数据默认仅存本机；仅当你主动使用 AI 功能时，当日学习数据才会发送给所选 AI 服务商。'),
           ),
-          ListTile(
-            leading: const Icon(Icons.code),
-            title: const Text('复习算法'),
+          const ListTile(
+            leading: Icon(Icons.code),
+            title: Text('复习算法'),
             subtitle: Text('基于艾宾浩斯遗忘曲线\n复习间隔 1/2/4/7/15/30 天'),
           ),
         ],

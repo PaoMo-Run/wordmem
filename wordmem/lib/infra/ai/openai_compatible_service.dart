@@ -20,15 +20,26 @@ class OpenAiCompatibleService implements AiService {
 
   Uri get _chatUri => Uri.parse('${config.baseUrl}/chat/completions');
 
-  Map<String, Object?> _buildBody(AiRequest request, {bool stream = false}) => {
-        'model': config.model,
-        'messages': request.messages
-            .map((m) => {'role': m.roleName, 'content': m.content})
-            .toList(),
-        'temperature': request.temperature,
-        'max_tokens': request.maxTokens,
-        'stream': stream,
+  Map<String, Object?> _buildBody(AiRequest request, {bool stream = false}) {
+    final body = <String, Object?>{
+      'model': config.model,
+      'messages': request.messages
+          .map((m) => {'role': m.roleName, 'content': m.content})
+          .toList(),
+      'temperature': request.temperature,
+      'max_tokens': request.maxTokens,
+      'stream': stream,
+    };
+    // 深度思考：agnes 等平台通过 thinking 参数控制推理强度
+    // （budget_tokens 越大，思考越深入，质量越高但耗时/消耗越大）
+    if (request.enableThinking) {
+      body['thinking'] = {
+        'type': 'enabled',
+        'budget_tokens': request.thinkingBudgetTokens,
       };
+    }
+    return body;
+  }
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',

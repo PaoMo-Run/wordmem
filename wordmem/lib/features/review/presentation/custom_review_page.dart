@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
-import '../../../domain/models/review_rating.dart';
 import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
 import 'widgets/quiz_cards.dart';
@@ -33,10 +32,14 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
 
   // —— 统计 ——
   int _enToZhCorrect = 0;
+  int _enToZhAnsweredCount = 0;
   int _chooseCorrect = 0;
   int _dictationCorrect = 0;
 
   final Map<int, List<WordOption>> _optionsCache = {};
+  // 英译汉选择题选项缓存（wordId -> 中文释义选项）
+  final Map<int, List<WordOption>> _enToZhOptionsCache = {};
+  final Map<int, bool> _enToZhAvailable = {};
 
   String _rangeLabel = '';
 
@@ -109,32 +112,84 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       return;
     }
     rows.shuffle();
-    // 预生成四选一选项（含释义）
-    _optionsCache.clear();
-    final repo = ref.read(wordRepositoryProvider);
-    for (final w in rows) {
-      _optionsCache[w['id'] as int] = repo.buildWordOptions(
-        w['word'] as String,
-        4,
-        correctDef: (w['custom_def'] as String?) ?? '',
-      );
-    }
+    // 预生成两个环节的选项（四选一 + 英译汉选择题）
+    _prepareStages(rows);
     setState(() {
       _queue = rows;
       _index = 0;
       _stage = _QuizStage.enToZh;
       _enToZhCorrect = 0;
+      _enToZhAnsweredCount = 0;
       _chooseCorrect = 0;
       _dictationCorrect = 0;
       _rangeLabel = _label;
       _phase = _Phase.quiz;
     });
+    _skipUnavailableEnToZh();
+  }
+
+  /// 预生成选项：选单词四选一（看中文选英文）+ 英译汉选择题（看英文选中文）
+  /// 释义来源：自定义释义优先，缺失回退词典 translation；两者皆空则跳过英译汉环节。
+  void _prepareStages(List<Map<String, dynamic>> rows) {
+    _optionsCache.clear();
+    _enToZhOptionsCache.clear();
+    _enToZhAvailable.clear();
+    final repo = ref.read(wordRepositoryProvider);
+    final dict = ref.read(dictSourceProvider);
+
+    final defs = <int, String>{};
+    for (final w in rows) {
+      var def = ((w['custom_def'] as String?) ?? '').trim();
+      if (def.isEmpty) {
+        final d = dict.lookup(w['word'] as String);
+        def = (d?.translation ?? '').trim();
+      }
+      defs[w['id'] as int] = def;
+      _enToZhAvailable[w['id'] as int] = def.isNotEmpty;
+    }
+
+    for (final w in rows) {
+      final id = w['id'] as int;
+      _optionsCache[id] = repo.buildWordOptions(
+        w['word'] as String,
+        4,
+        correctDef: (w['custom_def'] as String?) ?? '',
+      );
+      final correctDef = defs[id] ?? '';
+      if (correctDef.isEmpty) {
+        _enToZhOptionsCache[id] = const [];
+        continue;
+      }
+      final correctWord = w['word'] as String;
+      final options = <WordOption>[
+        WordOption(word: correctWord, definition: correctDef),
+      ];
+      final seenDefs = <String>{correctDef};
+      for (final other in rows) {
+        if (options.length >= 4) break;
+        final oid = other['id'] as int;
+        if (oid == id) continue;
+        final odef = defs[oid] ?? '';
+        if (odef.isEmpty || !seenDefs.add(odef)) continue;
+        options.add(WordOption(word: other['word'] as String, definition: odef));
+      }
+      _enToZhOptionsCache[id] = options..shuffle();
+    }
+  }
+
+  void _skipUnavailableEnToZh() {
+    while (_index < _queue.length &&
+        !(_enToZhAvailable[_word['id'] as int] ?? false)) {
+      _index++;
+    }
+    if (_index >= _queue.length && _phase == _Phase.quiz) {
+      setState(() => _stage = _QuizStage.chooseWord);
+    }
   }
 
   Map<String, dynamic> get _word => _queue[_index];
   String get _currentWord => _word['word'] as String;
   String get _currentDef => ((_word['custom_def'] as String?) ?? '').trim();
-  String get _currentNote => (_word['note'] as String?) ?? '';
   List<WordOption> get _currentOptions =>
       _optionsCache[_word['id'] as int] ??
       [WordOption(word: _currentWord, definition: _currentDef)];
@@ -144,17 +199,20 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // 英译汉（自选复习不更新 FSRS，仅统计记住与否）
-  void _rate(ReviewRating rating) {
-    if (rating == ReviewRating.good || rating == ReviewRating.easy) {
-      _enToZhCorrect++;
-    }
+  // 英译汉（选择题，自选复习不更新 FSRS，仅统计记住与否）
+  void _enToZhAnswered(bool correct) {
+    if (correct) _enToZhCorrect++;
+    _enToZhAnsweredCount++;
     _advanceEnToZh();
   }
 
   void _advanceEnToZh() {
     if (_index < _queue.length - 1) {
       setState(() => _index++);
+      _skipUnavailableEnToZh();
+      if (_index >= _queue.length && _stage == _QuizStage.enToZh) {
+        setState(() => _stage = _QuizStage.chooseWord);
+      }
     } else {
       setState(() {
         _index = 0;
@@ -325,13 +383,15 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     switch (_stage) {
       case _QuizStage.enToZh:
         title = '英译汉 ${_index + 1} / $total';
-        card = EnToZhCard(
+        card = EnToZhChoiceCard(
           key: ValueKey('en2zh-${_word['id']}'),
           word: _currentWord,
           definition: _currentDef,
-          note: _currentNote,
-          onRate: _rate,
+          options: _enToZhOptionsCache[_word['id'] as int] ?? const [],
+          onAnswered: _enToZhAnswered,
+          onNext: _advanceEnToZh,
           onSkip: _advanceEnToZh,
+          isLast: _index == total - 1,
         );
       case _QuizStage.chooseWord:
         title = '选单词 ${_index + 1} / $total';
@@ -370,7 +430,14 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       body: Column(
         children: [
           LinearProgressIndicator(value: progress, minHeight: 3),
-          Expanded(child: card),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: card,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -424,7 +491,7 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              _resultRow(theme, '英译汉', '$_enToZhCorrect / $total',
+              _resultRow(theme, '英译汉', '$_enToZhCorrect / $_enToZhAnsweredCount',
                   Icons.translate, AppColors.primary),
               const SizedBox(height: 8),
               _resultRow(theme, '选单词', '$_chooseCorrect / $total',
