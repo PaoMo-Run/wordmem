@@ -62,10 +62,11 @@ void main() {
     test('词组被排除在词根族之外', () {
       final matcher = RootMatcher();
       final master = _root('master');
-      final words = ['master', 'master minimum equipment list'];
+      // 2 个真实词 + 1 个含 master 的词组；词组被排除后仍能成族（满足 >=2 词）
+      final words = ['master', 'mastery', 'master minimum equipment list'];
       final matches = matcher.match(words, [master]);
       expect(matches, isNotEmpty);
-      expect(matches.first.words, ['master']); // 词组不在其中
+      expect(matches.first.words, ['master', 'mastery']); // 词组不在其中
     });
   });
 

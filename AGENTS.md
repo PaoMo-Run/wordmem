@@ -6,7 +6,7 @@
 
 **词记 (WordMem)**：一个完全离线的 Android 英语词汇学习 App。用户添加单词后，通过「艾宾浩斯遗忘曲线」间隔复习算法排程，以三段式测验（英译汉 → 选单词 → 默写）巩固记忆，并支持近义词检测、统计与备份恢复。
 
-- 版本：`1.2.0+12`
+- 版本：`2.0.0+16`
 - 平台：Android only（minSdk 26 / targetSdk 34 / compileSdk 36）
 - 定位：**本地优先**。核心学习功能完全离线（词库/复习/统计/备份均在本地）；AI 功能（短文生成 / AI 陪练）可选联网，仅在用户主动使用时调用所选 AI 服务商
 
@@ -115,9 +115,12 @@ flutter build apk --debug
 
 ---
 
-## ⚠️ 编译前强制清理流程（每次 `flutter build` 前必须执行，不得跳过）
+## ⚠️ 含 Flutter 依赖的任务在沙箱外执行（取代「编译前强制清理」）
 
-> 2026-08-15 实测：上一次编译残留的锁文件/产物会导致下次编译**静默卡死**（无输出、无进程、11 分钟无产物）。**本机环境规则：每次编译前先清理。**
+> **首选（2026-08-22 实测验证）**：所有 `flutter build` / `flutter run` / `flutter pub get` / `flutter analyze` 等命令，**在本机一律用沙箱外模式运行**（WorkBuddy 中 `dangerouslyDisableSandbox: true`）。沙箱外 Flutter 正常（`flutter --version` 秒回、debug 包约 2 分钟出），卡死是沙箱对缓存/锁文件权限限制所致，非框架问题。
+> **兜底**：仅当沙箱外权限弹窗无法获批时，才退回下方清理流程。
+>
+> 旧规则（2026-08-15 实测）：上一次编译残留的锁文件/产物会导致下次编译**静默卡死**（无输出、无进程、11 分钟无产物）。
 
 1. **查残留进程**：确认无 `java/dart/flutter/gradle` 进程（`tasklist | grep -iE "java|dart|flutter|gradle"`），有则先终止
 2. **清 flutter 锁文件**（用 Python `os.remove`，⚠️ `rm`/PowerShell 会被沙箱**静默拦截**——报成功但文件仍在）：
