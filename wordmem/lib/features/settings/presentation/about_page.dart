@@ -67,7 +67,7 @@ class _AboutPageState extends State<AboutPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final versionText =
-        _version.isEmpty ? 'v1.4.13' : 'v$_version${_buildNumber.isNotEmpty ? ' ($_buildNumber)' : ''}';
+        _version.isEmpty ? 'v2.0.0' : 'v$_version${_buildNumber.isNotEmpty ? ' ($_buildNumber)' : ''}';
 
     return Scaffold(
       appBar: AppBar(title: const Text('关于词记')),
