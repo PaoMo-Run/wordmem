@@ -23,8 +23,6 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
   void initState() {
     super.initState();
     _reload();
-    // 短文保存/编辑/归档/测验后自动刷新记忆库列表
-    ref.listen(storyVersionProvider, (_, __) => _reload());
   }
 
   Future<void> _reload() async {
@@ -48,6 +46,8 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 短文保存/编辑/归档/测验后自动刷新记忆库列表（必须在 build 中调用）
+    ref.listen(storyVersionProvider, (_, __) => _reload());
     final theme = Theme.of(context);
 
     return Scaffold(

@@ -21,8 +21,6 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
   void initState() {
     super.initState();
     _reload();
-    // 短文保存/测验记录后自动刷新（从测验页返回、其他入口变更等）
-    ref.listen(storyVersionProvider, (_, __) => _reload());
   }
 
   Future<void> _reload() async {
@@ -115,6 +113,8 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 短文保存/测验记录后自动刷新（从测验页返回、其他入口变更等）—— 必须在 build 中调用
+    ref.listen(storyVersionProvider, (_, __) => _reload());
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('短文记忆库')),

@@ -29,8 +29,6 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
   void initState() {
     super.initState();
     _load();
-    // 群挑战通过 / 手动移出词林 / 从词根移出 后自动刷新（熟悉度与群成员即时更新）
-    ref.listen(groupVersionProvider, (_, __) => _load());
   }
 
   Future<void> _load() async {
@@ -88,6 +86,8 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 群挑战通过 / 手动移出词林 / 从词根移出 后自动刷新（熟悉度与群成员即时更新）—— 必须在 build 中调用
+    ref.listen(groupVersionProvider, (_, __) => _load());
     final theme = Theme.of(context);
     return DefaultTabController(
       length: 2,
