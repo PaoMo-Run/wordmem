@@ -8,6 +8,9 @@ on:
 jobs:
   analyze-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wordmem
     steps:
       - uses: actions/checkout@v4
 
