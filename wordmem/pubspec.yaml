@@ -1,7 +1,7 @@
 name: wordmem
 description: "词记 - 离线英语词库与间隔复习 App"
 publish_to: 'none'
-version: 1.4.13+14
+version: 1.4.14+15
 
 environment:
   sdk: ^3.6.0

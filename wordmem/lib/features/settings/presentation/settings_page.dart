@@ -267,6 +267,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: Text('内置词典'),
             subtitle: Text('专业版 ECDICT（含航空专业词）\n版本: ${AppConstants.dictProVersion}\n词条数: ${AppConstants.dictProWordCount}'),
           ),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('按新词典刷新词库释义'),
+            subtitle: const Text('将词库中已有单词的释义更新为词典最新版（改善近义词/词根归类）'),
+            onTap: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('刷新词库释义'),
+                  content: const Text(
+                      '将用词典最新释义覆盖词库中所有单词的释义。\n'
+                      '此操作会影响近义词/词根分组，完成后将自动重新聚类。\n\n'
+                      '继续？'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('刷新')),
+                  ],
+                ),
+              );
+              if (confirmed != true) return;
+
+              final repo = ref.read(wordRepositoryProvider);
+              final updated = repo.refreshDefinitionsFromDict();
+              // 即时反馈：词库列表 + 近义词/词根群立即重聚类
+              ref.read(wordListVersionProvider.notifier).state++;
+              ref.read(groupVersionProvider.notifier).state++;
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('已刷新 $updated 个单词的释义，近义词/词根分组已更新')),
+                );
+              }
+            },
+          ),
 
           const Divider(),
 

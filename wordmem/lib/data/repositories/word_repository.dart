@@ -141,6 +141,28 @@ class WordRepository {
   /// 词典总词数
   int get dictWordCount => _dictSource.wordCount;
 
+  /// 按词典最新释义批量刷新词库 custom_def（词典校对 v4 后用于旧词同步）。
+  /// - 遍历 user_words，以词典 lookup 结果覆盖 custom_def
+  /// - 仅当词典命中且释义与当前 custom_def 不同才更新
+  /// - 返回实际刷新词数
+  int refreshDefinitionsFromDict() {
+    final all = _wordDao.getAll(limit: 100000);
+    int updated = 0;
+    for (final w in all) {
+      final wordText = (w['word'] as String? ?? '').trim();
+      if (wordText.isEmpty) continue;
+      final dictWord = _dictSource.lookupWithExchange(wordText);
+      if (dictWord == null) continue;
+      final newDef = dictWord.translation ?? '';
+      if (newDef.isEmpty) continue;
+      final oldDef = (w['custom_def'] as String? ?? '').trim();
+      if (oldDef == newDef) continue;
+      _wordDao.update(w['id'] as int, customDef: newDef);
+      updated++;
+    }
+    return updated;
+  }
+
   /// 查找单词的近义词（多级匹配）
   /// L1 中文词林义类层 + L2 释义中文关键词重叠层，任一命中即候选，
   /// 再经用户黑名单过滤，按相似度降序返回。
