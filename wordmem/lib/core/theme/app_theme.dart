@@ -1,145 +1,163 @@
 import 'package:flutter/material.dart';
 import 'colors.dart';
 
-/// 应用主题定义
+/// 应用主题定义（M3 规范化，2026-08-30 重构）
+///
+/// 设计原则：
+/// 1. 用 [AppColors.seed] 生成 M3 全套角色（surfaceContainer 层级、onSurfaceVariant 等自动适配深浅模式）；
+/// 2. 关键品牌角色用精修值覆盖（对比度达标）；
+/// 3. 深色模式 onPrimary 用深色文字（AppColors.onPrimaryDark）；
+/// 4. 卡片用 tonal elevation（浅色 surfaceContainerLow）而非纯白平铺，消除廉价扁平感；
+/// 5. 页面禁止再写裸色值，一律通过 theme.colorScheme / AppColors 语义 token。
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get light => ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.light,
-    colorScheme: const ColorScheme.light(
-      primary: AppColors.primary,
-      onPrimary: AppColors.onPrimary,
+  static ThemeData get light => _build(Brightness.light);
+  static ThemeData get dark => _build(Brightness.dark);
+
+  static ThemeData _build(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+
+    // M3 全角色：seed 生成 + 品牌关键角色覆盖
+    final scheme = ColorScheme.fromSeed(
+      seedColor: AppColors.seed,
+      brightness: brightness,
+    ).copyWith(
+      primary: isDark ? AppColors.primaryLight : AppColors.primary,
+      onPrimary: isDark ? AppColors.onPrimaryDark : AppColors.onPrimary,
       primaryContainer: AppColors.primaryContainer,
       onPrimaryContainer: AppColors.onPrimaryContainer,
-      secondary: AppColors.secondary,
-      secondaryContainer: AppColors.secondaryContainer,
+      secondary: isDark ? AppColors.secondaryContainer : AppColors.secondary,
+      secondaryContainer: isDark ? AppColors.secondary : AppColors.secondaryContainer,
       onSecondaryContainer: AppColors.onSecondaryContainer,
-      surface: AppColors.lightSurface,
-      onSurface: AppColors.lightOnSurface,
-      surfaceContainerHighest: AppColors.lightSurfaceVariant,
-      outline: AppColors.lightOutline,
+      surface: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      onSurface: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+      onSurfaceVariant: isDark
+          ? AppColors.darkOnSurfaceVariant
+          : AppColors.lightOnSurfaceVariant,
+      outline: isDark ? AppColors.darkOutline : AppColors.lightOutline,
       error: AppColors.error,
-    ),
-    scaffoldBackgroundColor: AppColors.lightBg,
-    appBarTheme: const AppBarTheme(
-      centerTitle: false,
-      elevation: 0,
-      scrolledUnderElevation: 0.5,
-      backgroundColor: AppColors.lightBg,
-      foregroundColor: AppColors.lightOnBg,
-    ),
-    cardTheme: CardThemeData(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.lightOutline),
-      ),
-      color: AppColors.lightSurface,
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: AppColors.lightSurfaceVariant,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: AppColors.lightSurface,
-      indicatorColor: AppColors.primaryContainer,
-      labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
-        return TextStyle(
-          fontSize: 12,
-          fontWeight: states.contains(WidgetState.selected)
-              ? FontWeight.w600
-              : FontWeight.w400,
-          color: states.contains(WidgetState.selected)
-              ? AppColors.primary
-              : AppColors.secondary,
-        );
-      }),
-    ),
-    dividerTheme: const DividerThemeData(
-      color: AppColors.lightOutline,
-      thickness: 1,
-      space: 1,
-    ),
-    sliderTheme: SliderThemeData(
-      activeTrackColor: AppColors.primary,
-      inactiveTrackColor: AppColors.primary.withValues(alpha: 0.2),
-      thumbColor: AppColors.primary,
-    ),
-  );
+    );
 
-  static ThemeData get dark => ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.dark,
-    colorScheme: const ColorScheme.dark(
-      primary: AppColors.primaryLight,
-      onPrimary: AppColors.darkOnBg,
-      primaryContainer: AppColors.primaryDark,
-      onPrimaryContainer: AppColors.primaryContainer,
-      secondary: AppColors.secondaryContainer,
-      secondaryContainer: AppColors.secondary,
-      onSecondaryContainer: AppColors.onSecondaryContainer,
-      surface: AppColors.darkSurface,
-      onSurface: AppColors.darkOnSurface,
-      surfaceContainerHighest: AppColors.darkSurfaceVariant,
-      outline: AppColors.darkOutline,
-      error: AppColors.error,
-    ),
-    scaffoldBackgroundColor: AppColors.darkBg,
-    appBarTheme: const AppBarTheme(
-      centerTitle: false,
-      elevation: 0,
-      scrolledUnderElevation: 0.5,
-      backgroundColor: AppColors.darkBg,
-      foregroundColor: AppColors.darkOnBg,
-    ),
-    cardTheme: CardThemeData(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.darkOutline),
+    final bg = isDark ? AppColors.darkBg : AppColors.lightBg;
+    final onBg = isDark ? AppColors.darkOnBg : AppColors.lightOnBg;
+    final surface = isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final outline = isDark ? AppColors.darkOutline : AppColors.lightOutline;
+    // 卡片：浅色模式用 tonal 层级（surfaceContainerLow），深色模式用 surface
+    final cardColor =
+        isDark ? AppColors.darkSurface : scheme.surfaceContainerLow;
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: bg,
+
+      // ── AppBar ──
+      appBarTheme: AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        backgroundColor: bg,
+        foregroundColor: onBg,
+        surfaceTintColor: Colors.transparent,
       ),
-      color: AppColors.darkSurface,
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: AppColors.darkSurfaceVariant,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+
+      // ── Card（tonal elevation，统一圆角） ──
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cardColor,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: outline),
+        ),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: AppColors.darkSurface,
-      indicatorColor: AppColors.primaryDark,
-      labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
-        return TextStyle(
-          fontSize: 12,
-          fontWeight: states.contains(WidgetState.selected)
-              ? FontWeight.w600
-              : FontWeight.w400,
-          color: states.contains(WidgetState.selected)
-              ? AppColors.primaryLight
-              : AppColors.secondaryContainer,
-        );
-      }),
-    ),
-    dividerTheme: const DividerThemeData(
-      color: AppColors.darkOutline,
-      thickness: 1,
-      space: 1,
-    ),
-    sliderTheme: SliderThemeData(
-      activeTrackColor: AppColors.primaryLight,
-      inactiveTrackColor: AppColors.primaryLight.withValues(alpha: 0.2),
-      thumbColor: AppColors.primaryLight,
-    ),
-  );
+
+      // ── 输入框 ──
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark
+            ? AppColors.darkSurfaceVariant
+            : AppColors.lightSurfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+
+      // ── 底部导航 ──
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        indicatorColor: scheme.primaryContainer.withValues(alpha: 0.6),
+        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
+          return TextStyle(
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w600
+                : FontWeight.w400,
+            color: states.contains(WidgetState.selected)
+                ? scheme.primary
+                : scheme.onSurfaceVariant,
+          );
+        }),
+      ),
+
+      // ── Chip ──
+      chipTheme: ChipThemeData(
+        backgroundColor: isDark
+            ? AppColors.darkSurfaceVariant
+            : AppColors.lightSurfaceVariant,
+        side: BorderSide(color: outline),
+        labelStyle: TextStyle(
+          fontSize: 13,
+          color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+
+      // ── SnackBar ──
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isDark ? AppColors.darkOnBg : AppColors.lightOnBg,
+        contentTextStyle: TextStyle(
+          color: isDark ? AppColors.darkBg : Colors.white,
+          fontSize: 14,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+
+      // ── Dialog ──
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+
+      // ── BottomSheet ──
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+
+      // ── Divider ──
+      dividerTheme: DividerThemeData(
+        color: outline,
+        thickness: 1,
+        space: 1,
+      ),
+
+      // ── Slider ──
+      sliderTheme: SliderThemeData(
+        activeTrackColor: scheme.primary,
+        inactiveTrackColor: scheme.primary.withValues(alpha: 0.2),
+        thumbColor: scheme.primary,
+      ),
+    );
+  }
 }

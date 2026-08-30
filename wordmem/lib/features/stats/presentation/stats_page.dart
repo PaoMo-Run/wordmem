@@ -342,7 +342,7 @@ class _TrendChart extends StatelessWidget {
     }
 
     final newColor = theme.colorScheme.primary;
-    final reviewColor = const Color(0xFF1E88E5);
+    final reviewColor = AppColors.statusReview;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

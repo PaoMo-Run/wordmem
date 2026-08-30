@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../domain/models/stats.dart';
@@ -58,7 +59,7 @@ class _ReviewCenterPageState extends ConsumerState<ReviewCenterPage> {
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF3B6FE0), Color(0xFF4F8CFF)],
+                  colors: [AppColors.primary, AppColors.primaryLight],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/colors.dart';
+
 /// 关于页：版本信息 + 更新日志 + GitHub 项目地址 + 隐私政策
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -83,7 +85,7 @@ class _AboutPageState extends State<AboutPage> {
                   height: 72,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF3B6FE0), Color(0xFF4F8CFF)],
+                      colors: [AppColors.primary, AppColors.primaryLight],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -170,9 +172,9 @@ class _AboutPageState extends State<AboutPage> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('· ',
+                              Text('· ',
                                   style: TextStyle(
-                                      color: Color(0xFF4F8CFF),
+                                      color: theme.colorScheme.primary,
                                       fontWeight: FontWeight.w800)),
                               Expanded(
                                 child: Text(item,

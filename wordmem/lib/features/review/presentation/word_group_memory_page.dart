@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -136,7 +137,7 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                const Icon(Icons.hub_outlined, color: Color(0xFF4F8CFF)),
+                const Icon(Icons.hub_outlined, color: AppColors.primary),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -207,11 +208,11 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: const Color(0xFF4F8CFF).withValues(alpha: 0.12),
+              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
               child: Text(
                 m.root.root.toUpperCase().substring(0, 1),
                 style: const TextStyle(
-                    color: Color(0xFF4F8CFF), fontWeight: FontWeight.w800),
+                    color: AppColors.primary, fontWeight: FontWeight.w800),
               ),
             ),
             title: Row(

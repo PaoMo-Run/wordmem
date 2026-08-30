@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/colors.dart';
 import '../models/quick_action.dart';
 import '../data/quick_actions_repo.dart';
 
@@ -127,7 +128,7 @@ class _TodayQuickActionsEditorPageState
                           title: Text(action.label),
                           trailing: IconButton(
                             icon: const Icon(Icons.remove_circle_outline,
-                                color: Color(0xFFF87171)),
+                                color: AppColors.error),
                             onPressed: () => _remove(id),
                           ),
                         );

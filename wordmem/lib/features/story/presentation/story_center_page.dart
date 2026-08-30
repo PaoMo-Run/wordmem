@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/colors.dart';
 import '../../../domain/models/story.dart';
 import '../../../shared/providers/app_providers.dart';
 
@@ -71,7 +72,7 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF2F7A5E), Color(0xFF34B98A)],
+                      colors: [AppColors.primaryDark, AppColors.primaryLight],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),

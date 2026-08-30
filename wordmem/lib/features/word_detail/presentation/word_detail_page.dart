@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../core/theme/colors.dart';
 import '../../../core/utils/string_utils.dart';
 import '../../../domain/models/review_rating.dart';
 import '../../../domain/services/root_matcher.dart';
@@ -609,10 +610,10 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                   leading: CircleAvatar(
                     radius: 6,
                     backgroundColor: switch (rating) {
-                      ReviewRating.again => const Color(0xFFE53935),
-                      ReviewRating.hard => const Color(0xFFFFA726),
-                      ReviewRating.good => const Color(0xFF43A047),
-                      ReviewRating.easy => const Color(0xFF1E88E5),
+                      ReviewRating.again => AppColors.ratingAgain,
+                      ReviewRating.hard => AppColors.ratingHard,
+                      ReviewRating.good => AppColors.ratingGood,
+                      ReviewRating.easy => AppColors.ratingEasy,
                     },
                   ),
                   title: Text(rating.label),
