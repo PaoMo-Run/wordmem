@@ -51,7 +51,12 @@ class _MePageState extends ConsumerState<MePage> {
     ref.listen(wordListVersionProvider, (_, __) => _loadStats());
 
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
+      // 液体玻璃布局：背景由 MainShell 的 aurora 光斑提供，Scaffold 透明
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('我的'),
+        backgroundColor: Colors.transparent,
+      ),
       body: ListView(
         children: [
           // 个人概览

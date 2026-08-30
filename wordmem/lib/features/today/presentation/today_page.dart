@@ -4,17 +4,20 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/stats.dart';
 import '../models/quick_action.dart';
 import '../data/quick_actions_repo.dart';
 
 /// 今日页面（首页发射台：问候 + 进度 + 主行动 + 快捷入口）
 ///
-/// 设计约定（2026-08-30 重做，M3 规范）：
-/// 1. 单张 Hero 卡承载问候/连续天数/进度环/三项统计，不再堆两张结构相同的卡；
-/// 2. 次级文本一律 [ColorScheme.onSurfaceVariant]，不用 alpha 叠加；
-/// 3. 字号全部取自 M3 type scale 角色，不手写 fontSize；
-/// 4. 进度环是全局唯一一处主动动画，且尊重系统「移除动画」设置。
+/// 设计约定（2026-08-30 重做，M3 + 液体玻璃）：
+/// 1. 单张玻璃 Hero 卡承载问候/连续天数/进度环/三项统计；
+/// 2. 页面背景为全局 aurora 光斑（MainShell 注入），Scaffold 透明；
+/// 3. 次级文本一律 [ColorScheme.onSurfaceVariant]，不用 alpha 叠加；
+/// 4. 字号全部取自 M3 type scale 角色，不手写 fontSize；
+/// 5. 进度环是全局唯一一处主动动画，且尊重系统「移除动画」设置。
+///    extendBody 布局：列表底部 padding 须避开悬浮玻璃 dock（≈116）。
 class TodayPage extends ConsumerWidget {
   const TodayPage({super.key});
 
@@ -23,7 +26,11 @@ class TodayPage extends ConsumerWidget {
     final dbAsync = ref.watch(databaseProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('今日')),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('今日'),
+        backgroundColor: Colors.transparent,
+      ),
       body: dbAsync.when(
         data: (_) => const _TodayContent(),
         loading: () => const LoadingIndicator(message: '正在加载...'),
@@ -93,7 +100,7 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
     return RefreshIndicator(
       onRefresh: () async => _loadData(),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 116),
         children: [
           _TodayHero(stats: stats, streak: _streak),
           const SizedBox(height: 14),
@@ -151,13 +158,10 @@ class _TodayHero extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return GlassContainer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -224,7 +228,6 @@ class _TodayHero extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -375,7 +378,6 @@ class _PrimaryAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final due = stats.pendingReviews;
     final hasWords = stats.totalWords > 0;
     final actionable = due > 0;
@@ -389,19 +391,15 @@ class _PrimaryAction extends StatelessWidget {
 
     return SizedBox(
       width: double.infinity,
-      child: FilledButton.icon(
+      child: GlassButton(
         onPressed: actionable
             ? () => context.push('/review')
             : goAdd
                 ? () => context.push('/add-word')
                 : null,
-        icon: Icon(icon),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(54),
-          textStyle: theme.textTheme.titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
+        icon: icon,
+        label: label,
+        tinted: true,
       ),
     );
   }
@@ -494,38 +492,34 @@ class _QuickActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  // 深色底上提高着色浓度，保证 22dp 图标 ≥3:1
-                  color: color.withValues(alpha: isDark ? 0.20 : 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ],
+    return GlassContainer(
+      onTap: onTap,
+      radius: 16,
+      blur: 16,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              // 深色底上提高着色浓度，保证 22dp 图标 ≥3:1
+              color: color.withValues(alpha: isDark ? 0.20 : 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 22),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }

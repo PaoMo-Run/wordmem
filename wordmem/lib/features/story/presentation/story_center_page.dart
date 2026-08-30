@@ -52,11 +52,17 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('短文')),
+      // 液体玻璃布局：背景由 MainShell 的 aurora 光斑提供，Scaffold 透明；
+      // extendBody 下底部 padding 避开悬浮玻璃 dock（≈116）
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('短文'),
+        backgroundColor: Colors.transparent,
+      ),
       body: RefreshIndicator(
         onRefresh: _reload,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
           children: [
             // 今日短文入口卡片（整卡可点击）
             Material(

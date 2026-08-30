@@ -164,7 +164,10 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     });
 
     return Scaffold(
+      // 液体玻璃布局：背景由 MainShell 的 aurora 光斑提供，Scaffold 透明
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: TextField(
           controller: _searchController,
           decoration: const InputDecoration(
@@ -309,7 +312,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 
       final theme = Theme.of(context);
       return ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        // 显式 padding 需自行避让悬浮 dock 底部（≈116）
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 116),
         itemCount: quizGroups.length,
         itemBuilder: (context, i) {
           final group = quizGroups[i];

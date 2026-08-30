@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,18 +5,20 @@ import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/stats.dart';
 
 /// 复习中心（底部导航第 2 个 tab）
 /// 今日复习（FSRS 大卡）+ 自由练习（自选复习 / 词群记忆）+ 本周复习量
 ///
-/// 设计约定（2026-08-30 重做，M3 + 玻璃质感）：
-/// 1. 页面背景为品牌色系淡渐变，卡片用「毛玻璃」材质（半透明 surface + blur + 细边框 + 柔和阴影）。
-///    玻璃容器用装饰性 alpha（允许），文本一律走 token（禁止 alpha 叠加文本）；
+/// 设计约定（2026-08-30 重做，M3 + 液体玻璃）：
+/// 1. 背景为全局 aurora 光斑（MainShell 注入），Scaffold 透明；
+///    卡片统一用 [GlassContainer] 液体玻璃（共享配方，见 glass.dart）；
 /// 2. 任务量口径与今日页一致：`dueReview` 待复习 / `dueNew` 待学新词（`pendingCount` 旧口径含重复计算，已弃用）；
 /// 3. 自由练习两卡复用快捷入口语义色（quickCustomReview / quickGroupMemory），跨页配色协调；
 /// 4. 字号全部取自 M3 type scale 角色，不手写 fontSize；
 /// 5. 次级文本一律 onSurfaceVariant。
+///    extendBody 布局：列表底部 padding 须避开悬浮玻璃 dock（≈116）。
 class ReviewCenterPage extends ConsumerStatefulWidget {
   const ReviewCenterPage({super.key});
 
@@ -51,8 +51,6 @@ class _ReviewCenterPageState extends ConsumerState<ReviewCenterPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
     // 监听词库版本变化，自动刷新（评分页 /review 提交后 bump，返回即刷新）
     ref.listen(wordListVersionProvider, (_, __) => _load());
 
@@ -68,138 +66,90 @@ class _ReviewCenterPageState extends ConsumerState<ReviewCenterPage> {
     final hasWords = stats.totalWords > 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('复习中心')),
-      body: Stack(
-        children: [
-          // 品牌色系淡渐变背景（玻璃材质赖以透出的底层，纯 token 派生）
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.55],
-                  colors: [
-                    cs.primaryContainer.withValues(alpha: isDark ? 0.16 : 0.30),
-                    Colors.transparent,
-                  ],
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('复习中心'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async => _load(),
+        child: AdaptiveContent(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 116),
+            children: [
+              _TodayHeroCard(stats: stats),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: GlassButton(
+                  onPressed: due > 0
+                      ? () => context.push('/review')
+                      : hasWords
+                          ? null
+                          : () => context.push('/add-word'),
+                  icon: due > 0
+                      ? Icons.play_arrow
+                      : (hasWords ? Icons.check : Icons.add),
+                  label: due > 0
+                      ? '开始今日复习 · $due 词'
+                      : (hasWords ? '今日任务已完成' : '添加第一个单词'),
+                  tinted: true,
                 ),
               ),
-            ),
-          ),
-          RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: AdaptiveContent(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              const SizedBox(height: 26),
+              if (!hasWords) ...[
+                EmptyState(
+                  icon: Icons.menu_book_outlined,
+                  title: '开始你的词汇之旅',
+                  subtitle: '添加第一个单词，或从文本中批量导入',
+                  actionLabel: '添加单词',
+                  onAction: () => context.push('/add-word'),
+                ),
+                const SizedBox(height: 26),
+              ],
+              Text(
+                '自由练习',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Row(
                 children: [
-                  _TodayHeroCard(stats: stats),
-                  const SizedBox(height: 12),
-                  _PrimaryAction(
-                    actionable: due > 0,
-                    due: due,
-                    goAdd: !hasWords,
-                  ),
-                  const SizedBox(height: 26),
-                  if (!hasWords) ...[
-                    EmptyState(
-                      icon: Icons.menu_book_outlined,
-                      title: '开始你的词汇之旅',
-                      subtitle: '添加第一个单词，或从文本中批量导入',
-                      actionLabel: '添加单词',
-                      onAction: () => context.push('/add-word'),
+                  Expanded(
+                    child: _PracticeCard(
+                      icon: Icons.calendar_month_outlined,
+                      title: '自选复习',
+                      desc: '按日期筛选，不影响算法',
+                      color: AppColors.quickCustomReview,
+                      onTap: () => context.push('/custom-review'),
                     ),
-                    const SizedBox(height: 26),
-                  ],
-                  Text(
-                    '自由练习',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PracticeCard(
-                          icon: Icons.calendar_month_outlined,
-                          title: '自选复习',
-                          desc: '按日期筛选，不影响算法',
-                          color: AppColors.quickCustomReview,
-                          onTap: () => context.push('/custom-review'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _PracticeCard(
-                          icon: Icons.hub_outlined,
-                          title: '词群记忆',
-                          desc: '近义词 + 词根分组测试',
-                          color: AppColors.quickGroupMemory,
-                          onTap: () => context.push('/word-group-memory'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 26),
-                  Text(
-                    '本周复习量',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 10),
-                  _GlassCard(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                    child: _WeeklyBarChart(daily: _daily),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PracticeCard(
+                      icon: Icons.hub_outlined,
+                      title: '词群记忆',
+                      desc: '近义词 + 词根分组测试',
+                      color: AppColors.quickGroupMemory,
+                      onTap: () => context.push('/word-group-memory'),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 毛玻璃卡片：半透明表面 + blur + 细边框 + 柔和阴影
-/// 半透明仅作装饰性容器底色（非文本），文本仍走 token。
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-
-  const _GlassCard({
-    required this.child,
-    this.padding = const EdgeInsets.all(18),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: cs.surface.withValues(alpha: isDark ? 0.52 : 0.58),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: cs.outline.withValues(alpha: isDark ? 0.30 : 0.22),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.20 : 0.05),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
+              const SizedBox(height: 26),
+              Text(
+                '本周复习量',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              GlassContainer(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                child: _WeeklyBarChart(daily: _daily),
               ),
             ],
           ),
-          child: child,
         ),
       ),
     );
@@ -218,7 +168,7 @@ class _TodayHeroCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final due = stats.dueNew + stats.dueReview;
 
-    return _GlassCard(
+    return GlassContainer(
       child: Row(
         children: [
           Container(
@@ -272,47 +222,6 @@ class _TodayHeroCard extends StatelessWidget {
   }
 }
 
-/// 主行动按钮：文案随任务状态变化（与今日页同款状态化逻辑）
-class _PrimaryAction extends StatelessWidget {
-  final bool actionable;
-  final int due;
-  final bool goAdd;
-
-  const _PrimaryAction({
-    required this.actionable,
-    required this.due,
-    required this.goAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final icon =
-        actionable ? Icons.play_arrow : (goAdd ? Icons.add : Icons.check);
-    final label = actionable
-        ? '开始今日复习 · $due 词'
-        : (goAdd ? '添加第一个单词' : '今日任务已完成');
-
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: actionable
-            ? () => context.push('/review')
-            : goAdd
-                ? () => context.push('/add-word')
-                : null,
-        icon: Icon(icon),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(54),
-          textStyle: theme.textTheme.titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
-  }
-}
-
 /// 自由练习卡片：玻璃材质 + 快捷入口语义色浅底图标（跨页配色协调）
 class _PracticeCard extends StatelessWidget {
   final IconData icon;
@@ -335,62 +244,35 @@ class _PracticeCard extends StatelessWidget {
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: cs.surface.withValues(alpha: isDark ? 0.52 : 0.58),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: cs.outline.withValues(alpha: isDark ? 0.30 : 0.22),
+    return GlassContainer(
+      onTap: onTap,
+      blur: 16,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: isDark ? 0.22 : 0.14),
+              borderRadius: BorderRadius.circular(13),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: cs.shadow.withValues(alpha: isDark ? 0.20 : 0.05),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            child: Icon(icon, color: color, size: 23),
           ),
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: onTap,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: isDark ? 0.22 : 0.14),
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: Icon(icon, color: color, size: 23),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      desc,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
-        ),
+          const SizedBox(height: 3),
+          Text(
+            desc,
+            style:
+                theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }

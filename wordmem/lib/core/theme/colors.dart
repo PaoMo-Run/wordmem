@@ -75,6 +75,11 @@ class AppColors {
   // 收藏
   static const Color favorite = Color(0xFFFFC107);
 
+  // ────────────────────────── 背景光斑（aurora 高级材质背景） ──────────────────────────
+  /// 光斑色仅供 AppBackground 径向渐变使用，页面禁止直接引用
+  static const Color glowCyan = Color(0xFF26A69A);  // 蓝绿（teal 400）
+  static const Color glowMint = Color(0xFF80CBC4);  // 薄荷（teal 200）
+
   // ────────────────────────── 今日快捷入口图标色（收敛为 8 语义 token） ──────────────────────────
   static const Color quickAddWord = Color(0xFF2F7BD6);      // 添加单词（蓝）
   static const Color quickStory = Color(0xFF009F93);        // 今日短文（青绿）

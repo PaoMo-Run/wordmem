@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../widgets/glass.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../../features/library/presentation/library_page.dart';
 import '../../features/review/presentation/review_center_page.dart';
@@ -217,14 +218,22 @@ class MainShell extends StatelessWidget {
           );
         }
         return Scaffold(
-          body: child,
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: selected,
-            onDestinationSelected: (i) => context.go(_destinations[i].path),
+          // extendBody：内容延伸到悬浮 dock 之后，玻璃才有背景可透（液体玻璃关键）
+          extendBody: true,
+          body: Stack(
+            children: [
+              // 全局 aurora 光斑背景（所有 tab 页共享的高级材质底）
+              const AppBackground(),
+              child,
+            ],
+          ),
+          bottomNavigationBar: GlassNavBar(
+            currentIndex: selected,
+            onChanged: (i) => context.go(_destinations[i].path),
             destinations: _destinations
-                .map((d) => NavigationDestination(
-                      icon: Icon(d.icon),
-                      selectedIcon: Icon(d.selectedIcon),
+                .map((d) => GlassNavDestination(
+                      icon: d.icon,
+                      selectedIcon: d.selectedIcon,
                       label: d.label,
                     ))
                 .toList(),
