@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/colors.dart';
 import '../../../domain/services/root_matcher.dart';
 import '../../../shared/providers/app_providers.dart';
 
@@ -44,6 +45,10 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
   final List<_AnswerRecord> _records = [];
 
   RootMatch get match => widget.match;
+
+  /// 深浅模式自适应的语义色（深色模式取亮化版本，保证对比度）
+  Color _semantic(ThemeData theme, Color light, Color dark) =>
+      theme.brightness == Brightness.dark ? dark : light;
 
   @override
   void initState() {
@@ -137,7 +142,7 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
                 match.root.root.toUpperCase(),
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF4F8CFF),
+                  color: theme.colorScheme.primary,
                   letterSpacing: 2,
                 ),
               ),
@@ -330,24 +335,28 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
           const SizedBox(height: 20),
 
-          // 4 选 1
+          // 4 选 1（状态色深浅自适应：正确绿 / 错误红 / 选中品牌色）
           ...List.generate(q.options.length, (i) {
             final option = q.options[i];
             final selected = _selected == i;
             final isCorrectOpt = i == q.correctIndex;
+            final correctColor = _semantic(
+                theme, AppColors.ratingGood, AppColors.ratingGoodDark);
+            final wrongColor = _semantic(
+                theme, AppColors.ratingAgain, AppColors.ratingAgainDark);
             Color? bg;
             Color? border;
             if (_submitted) {
               if (isCorrectOpt) {
-                bg = const Color(0xFFE7F8F0);
-                border = const Color(0xFF34D399);
+                bg = correctColor.withValues(alpha: 0.14);
+                border = correctColor;
               } else if (selected) {
-                bg = const Color(0xFFFDEBEB);
-                border = const Color(0xFFF87171);
+                bg = wrongColor.withValues(alpha: 0.14);
+                border = wrongColor;
               }
             } else if (selected) {
-              bg = const Color(0xFFEAF1FF);
-              border = const Color(0xFF4F8CFF);
+              bg = theme.colorScheme.primary.withValues(alpha: 0.12);
+              border = theme.colorScheme.primary;
             }
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -372,11 +381,11 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
                           child: Text(option,
                               style: theme.textTheme.bodyMedium)),
                       if (_submitted && isCorrectOpt)
-                        const Icon(Icons.check_circle,
-                            color: Color(0xFF34D399), size: 20),
+                        Icon(Icons.check_circle,
+                            color: correctColor, size: 20),
                       if (_submitted && selected && !isCorrectOpt)
-                        const Icon(Icons.cancel,
-                            color: Color(0xFFF87171), size: 20),
+                        Icon(Icons.cancel,
+                            color: wrongColor, size: 20),
                     ],
                   ),
                 ),
@@ -427,11 +436,11 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
       TextSpan(text: word.substring(0, start)),
       TextSpan(
         text: word.substring(start, start + form.length),
-        style: const TextStyle(
-          color: Color(0xFF4F8CFF),
+        style: TextStyle(
+          color: theme.colorScheme.primary,
           fontWeight: FontWeight.w900,
           decoration: TextDecoration.underline,
-          decorationColor: Color(0xFF4F8CFF),
+          decorationColor: theme.colorScheme.primary,
         ),
       ),
       TextSpan(text: word.substring(start + form.length)),
@@ -441,6 +450,10 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
   Widget _buildResult(ThemeData theme) {
     final total = _records.length;
     final rate = total == 0 ? 0 : (_correct / total * 100).round();
+    final correctColor =
+        _semantic(theme, AppColors.ratingGood, AppColors.ratingGoodDark);
+    final wrongColor =
+        _semantic(theme, AppColors.ratingAgain, AppColors.ratingAgainDark);
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -451,9 +464,7 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
         Text('正确 $_correct/$total · 正确率 $rate%',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium?.copyWith(
-              color: _correct == total
-                  ? const Color(0xFF34D399)
-                  : theme.colorScheme.primary,
+              color: _correct == total ? correctColor : theme.colorScheme.primary,
             )),
         if (_passedThisRound) ...[
           const SizedBox(height: 8),
@@ -461,16 +472,16 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFF43A047).withValues(alpha: 0.12),
+              color: correctColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: const Color(0xFF43A047).withValues(alpha: 0.4)),
+                  color: correctColor.withValues(alpha: 0.4)),
             ),
             child: Text(
               '通过！词根熟悉度 +1（$_masteryAfter / 4）',
               textAlign: TextAlign.center,
               style: theme.textTheme.labelMedium?.copyWith(
-                color: const Color(0xFF43A047),
+                color: correctColor,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -483,7 +494,7 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
                 onTap: () => _openWordDetail(r.word),
                 leading: Icon(
                   r.isCorrect ? Icons.check_circle : Icons.cancel,
-                  color: r.isCorrect ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                  color: r.isCorrect ? correctColor : wrongColor,
                 ),
                 title: Text.rich(_buildWordSpan(r.word, theme)),
                 subtitle: Text('释义：${r.correctDef}'
