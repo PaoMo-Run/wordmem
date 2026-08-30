@@ -111,7 +111,7 @@ class _MePageState extends ConsumerState<MePage> {
 
           // 学习
           const _SectionHeader('学习'),
-          _GlassSection(
+          GlassSection(
             children: [
               ListTile(
                 leading: const Icon(Icons.bar_chart_outlined),
@@ -131,7 +131,7 @@ class _MePageState extends ConsumerState<MePage> {
 
           // 偏好
           const _SectionHeader('偏好'),
-          _GlassSection(
+          GlassSection(
             children: [
               Consumer(builder: (context, ref, _) {
                 final aiCfg = ref.watch(aiConfigProvider);
@@ -229,7 +229,7 @@ class _MePageState extends ConsumerState<MePage> {
 
           // 数据
           const _SectionHeader('数据'),
-          _GlassSection(
+          GlassSection(
             children: [
               ListTile(
                 leading: const Icon(Icons.text_snippet_outlined),
@@ -339,7 +339,7 @@ class _MePageState extends ConsumerState<MePage> {
 
           // 关于
           const _SectionHeader('关于'),
-          _GlassSection(
+          GlassSection(
             children: [
               ListTile(
                 leading: const Icon(Icons.info_outline),
@@ -352,26 +352,6 @@ class _MePageState extends ConsumerState<MePage> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// iOS 设置页式玻璃分组卡（静态玻璃，条目贴边满宽）
-class _GlassSection extends StatelessWidget {
-  final List<Widget> children;
-  const _GlassSection({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: GlassContainer(
-        blur: 0,
-        elevated: false,
-        radius: 14,
-        padding: EdgeInsets.zero,
-        child: Column(children: children),
       ),
     );
   }

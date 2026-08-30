@@ -261,6 +261,30 @@ class GlassNavBar extends StatelessWidget {
   }
 }
 
+/// iOS 设置页式玻璃分组卡（静态玻璃，条目贴边满宽）
+///
+/// 配合 `_SectionHeader` 使用：Header 在上，分组卡包住该组 ListTile；
+/// 替代「裸 ListTile + Divider」旧样式（me_page / settings_page 先例）。
+class GlassSection extends StatelessWidget {
+  final List<Widget> children;
+
+  const GlassSection({super.key, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: GlassContainer(
+        blur: 0,
+        elevated: false,
+        radius: 14,
+        padding: EdgeInsets.zero,
+        child: Column(children: children),
+      ),
+    );
+  }
+}
+
 /// 底部导航条目
 class GlassNavDestination {
   final IconData icon;

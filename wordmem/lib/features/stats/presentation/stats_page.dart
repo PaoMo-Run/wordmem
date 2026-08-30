@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/stats.dart';
 import '../../../core/theme/colors.dart';
 
 /// 统计页面
+///
+/// 设计约定（2026-08-30 液体玻璃改版）：aurora 背景 + 玻璃卡（页面仅 3 张，用真玻璃）；
+/// 统计色一律语义 token（连续=琥珀 / 总数=primary / 复习=statusReview 蓝）。
 class StatsPage extends ConsumerStatefulWidget {
   const StatsPage({super.key});
 
@@ -53,75 +57,85 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     final dist = _distribution!;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('统计')),
-      body: stats.totalWords == 0
-          ? const EmptyState(
-              icon: Icons.bar_chart_outlined,
-              title: '暂无统计数据',
-              subtitle: '添加单词并开始学习后这里会显示统计',
-            )
-          : RefreshIndicator(
-              onRefresh: () async => _loadData(),
-              child: AdaptiveContent(
-                child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // 概览卡片
-                  _OverviewCard(stats: stats),
-                  const SizedBox(height: 16),
-
-                  // 掌握状态分布
-                  Card(
-                    child: Padding(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('统计'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
+        children: [
+          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
+          const AppBackground(),
+          stats.totalWords == 0
+              ? const EmptyState(
+                  icon: Icons.bar_chart_outlined,
+                  title: '暂无统计数据',
+                  subtitle: '添加单词并开始学习后这里会显示统计',
+                )
+              : RefreshIndicator(
+                  onRefresh: () async => _loadData(),
+                  child: AdaptiveContent(
+                    child: ListView(
                       padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('掌握状态分布',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              )),
-                          const SizedBox(height: 16),
-                          _StatusDistribution(distribution: dist),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                      children: [
+                        // 概览卡片
+                        _OverviewCard(stats: stats),
+                        const SizedBox(height: 16),
 
-                  // 趋势图
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        // 掌握状态分布
+                        GlassContainer(
+                          blur: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('学习趋势',
+                              Text('掌握状态分布',
                                   style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w700,
                                   )),
-                              Text('近 7 天',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                                  )),
+                              const SizedBox(height: 16),
+                              _StatusDistribution(distribution: dist),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 180,
-                            child: _TrendChart(records: _dailyRecords),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 趋势图
+                        GlassContainer(
+                          blur: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('学习趋势',
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      )),
+                                  Text('近 7 天',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurfaceVariant,
+                                          )),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                height: 180,
+                                child: _TrendChart(records: _dailyRecords),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
                 ),
-              ),
-            ),
+        ],
+      ),
     );
   }
 }
@@ -134,63 +148,61 @@ class _OverviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _StatBox(
-                    icon: Icons.local_fire_department,
-                    label: '连续学习',
-                    value: '${stats.currentStreak}',
-                    unit: '天',
-                    color: Colors.orange,
-                  ),
+    return GlassContainer(
+      blur: 16,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _StatBox(
+                  icon: Icons.local_fire_department,
+                  label: '连续学习',
+                  value: '${stats.currentStreak}',
+                  unit: '天',
+                  color: AppColors.statusLearning,
                 ),
-                Expanded(
-                  child: _StatBox(
-                    icon: Icons.book_outlined,
-                    label: '总单词数',
-                    value: '${stats.totalWords}',
-                    unit: '个',
-                    color: theme.colorScheme.primary,
-                  ),
+              ),
+              Expanded(
+                child: _StatBox(
+                  icon: Icons.book_outlined,
+                  label: '总单词数',
+                  value: '${stats.totalWords}',
+                  unit: '个',
+                  color: theme.colorScheme.primary,
                 ),
-                Expanded(
-                  child: _StatBox(
-                    icon: Icons.repeat,
-                    label: '总复习数',
-                    value: '${stats.totalReviews}',
-                    unit: '次',
-                    color: Colors.blue,
-                  ),
+              ),
+              Expanded(
+                child: _StatBox(
+                  icon: Icons.repeat,
+                  label: '总复习数',
+                  value: '${stats.totalReviews}',
+                  unit: '次',
+                  color: AppColors.statusReview,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.psychology_outlined,
-                    size: 18, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text('预计平均记忆率: ',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    )),
-                Text(
-                  '${(stats.predictedRetention * 100).toStringAsFixed(1)}%',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.psychology_outlined,
+                  size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Text('预计平均记忆率: ',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  )),
+              Text(
+                '${(stats.predictedRetention * 100).toStringAsFixed(1)}%',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -226,7 +238,7 @@ class _StatBox extends StatelessWidget {
               TextSpan(
                 text: ' $unit',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -235,7 +247,7 @@ class _StatBox extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              color: theme.colorScheme.onSurfaceVariant,
             )),
       ],
     );
@@ -294,7 +306,7 @@ class _StatusDistribution extends StatelessWidget {
                 child: Text(
                   '${item.count}',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                   textAlign: TextAlign.end,
                 ),
@@ -323,7 +335,7 @@ class _TrendChart extends StatelessWidget {
       return Center(
         child: Text('暂无数据',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              color: theme.colorScheme.onSurfaceVariant,
             )),
       );
     }
@@ -336,7 +348,7 @@ class _TrendChart extends StatelessWidget {
       return Center(
         child: Text('暂无学习数据',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              color: theme.colorScheme.onSurfaceVariant,
             )),
       );
     }
@@ -390,8 +402,7 @@ class _TrendChart extends StatelessWidget {
                   '${r.date.month}/${r.date.day}',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               );
@@ -413,8 +424,7 @@ class _YAxis extends StatelessWidget {
     final theme = Theme.of(context);
     final mid = (maxValue / 2).ceil();
     final style = theme.textTheme.labelSmall?.copyWith(
-      fontSize: 10,
-      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+      color: theme.colorScheme.onSurfaceVariant,
     );
     return SizedBox(
       width: 32,
@@ -535,7 +545,7 @@ class _LegendItem extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              color: theme.colorScheme.onSurfaceVariant,
             )),
       ],
     );
