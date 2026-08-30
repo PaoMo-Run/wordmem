@@ -97,7 +97,6 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
         body: const Stack(
           fit: StackFit.expand,
           children: [
-            AppBackground(),
             LoadingIndicator(message: '生成挑战题目...'),
           ],
         ),
@@ -118,7 +117,6 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
         body: const Stack(
           fit: StackFit.expand,
           children: [
-            AppBackground(),
             EmptyState(
               icon: Icons.hub_outlined,
               title: '暂无可挑战的近义词',
@@ -157,7 +155,6 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           Column(
             children: [
               LinearProgressIndicator(value: progress, minHeight: 3),
@@ -177,7 +174,7 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
                       const SizedBox(height: 16),
                       // 释义（玻璃卡）
                       GlassContainer(
-                        blur: 16,
+                        blur: 0,
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           challenge.definition,
@@ -364,7 +361,6 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           Center(
             child: Padding(
               padding: const EdgeInsets.all(32),

@@ -97,4 +97,27 @@ void main() {
     await tester.tap(find.text('我的'));
     expect(tapped, 4, reason: '点击「我的」胶囊应回调 index=4');
   });
+
+  testWidgets('胶囊撑满槽位，点击空白区域（非文字图标）也触发切换', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    var tapped = -1;
+    await tester.pumpWidget(navBarApp((i) => tapped = i));
+
+    final capsule = tester.getRect(find.byType(GlassContainer).first);
+    // passthrough 修复后：胶囊应撑满 Expanded 槽位（逻辑屏 360 宽，
+    // 5 槽 + 间距 → 槽宽 ≈58），而不是收缩为内容宽
+    expect(
+      capsule.width,
+      greaterThan(44),
+      reason: '胶囊应撑满槽位，实际宽度 ${capsule.width}',
+    );
+
+    // 点胶囊顶部内边距空白区（非图标/文字）——修复前 InkWell 只覆盖内容宽，
+    // 此处点空必失效；修复后应命中整个胶囊
+    await tester.tapAt(Offset(capsule.center.dx, capsule.top + 4));
+    expect(tapped, 0, reason: '点击胶囊空白区域也应触发 onChanged(0)');
+  });
 }

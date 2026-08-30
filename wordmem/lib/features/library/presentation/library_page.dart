@@ -40,7 +40,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   void initState() {
     super.initState();
     _loadWords();
-    _scrollController.addListener(_onScroll);
+    // 不再注册自动续加载监听：改为「滑到底后继续下滑」才加载下一批
+    //（见 _buildWordListView 的 OverscrollNotification）
   }
 
   @override
@@ -48,13 +49,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMore();
-    }
   }
 
   void _loadWords({bool reset = true}) {
@@ -262,6 +256,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     }
     return ListView.builder(
       controller: _scrollController,
+      // 显式 padding 需自行避让悬浮 dock 底部（≈116）
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 116),
       itemCount: _dictResults.length + (_loading ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= _dictResults.length) {
@@ -287,22 +283,66 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         subtitle: _searchQuery.isNotEmpty ? '试试其他关键词' : '点击右上角加号添加单词',
       );
     }
-    return ListView.builder(
-      controller: _scrollController,
-      itemCount: _words.length + (_loading ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _words.length) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          );
+    final hasMore = _words.length < _total;
+    return NotificationListener<OverscrollNotification>(
+      // 滑到底后「停顿 + 大幅下滑」才加载下一批 50 个（避免贴边小动作误触）。
+      // 阈值 60px ≈ 1cm 下拉：必须明确「停顿 → 继续向下拽过底部 60px」才触发。
+      onNotification: (notification) {
+        if (notification.overscroll > 60) {
+          _loadMore();
         }
-        final word = _words[index];
-        return WordListTile(
-          word: word,
-          onTap: () => context.push('/word/${word['id']}'),
-        );
+        return false;
       },
+      child: ListView.builder(
+        controller: _scrollController,
+        // 显式 padding 需自行避让悬浮 dock 底部（≈116）
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 116),
+        itemCount: _words.length + 1,
+        itemBuilder: (context, index) {
+          if (index >= _words.length) {
+            return _buildLoadMoreFooter(hasMore);
+          }
+          final word = _words[index];
+          return WordListTile(
+            word: word,
+            onTap: () => context.push('/word/${word['id']}'),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 列表尾部状态：加载中 / 继续下滑加载更多 / 已全部加载
+  Widget _buildLoadMoreFooter(bool hasMore) {
+    final theme = Theme.of(context);
+    final String text;
+    if (_loading) {
+      text = '加载中…';
+    } else if (hasMore) {
+      text = '继续大幅下滑加载更多（已 ${_words.length}/$_total）';
+    } else {
+      text = '已加载全部 $_total 个单词';
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 14, 0, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (_loading)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          if (_loading) const SizedBox(width: 8),
+          Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

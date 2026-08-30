@@ -92,21 +92,11 @@ class _ReviewCenterPageState extends ConsumerState<ReviewCenterPage> {
                       : (hasWords ? Icons.check : Icons.add),
                   label: due > 0
                       ? '开始今日复习 · $due 词'
-                      : (hasWords ? '今日任务已完成' : '添加第一个单词'),
+                      : (hasWords ? '今日任务已完成' : '添加单词'),
                   tinted: true,
                 ),
               ),
               const SizedBox(height: 26),
-              if (!hasWords) ...[
-                EmptyState(
-                  icon: Icons.menu_book_outlined,
-                  title: '开始你的词汇之旅',
-                  subtitle: '添加第一个单词，或从文本中批量导入',
-                  actionLabel: '添加单词',
-                  onAction: () => context.push('/add-word'),
-                ),
-                const SizedBox(height: 26),
-              ],
               Text(
                 '自由练习',
                 style: theme.textTheme.titleSmall
@@ -246,7 +236,7 @@ class _PracticeCard extends StatelessWidget {
 
     return GlassContainer(
       onTap: onTap,
-      blur: 16,
+      blur: 0,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

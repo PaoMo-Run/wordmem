@@ -62,6 +62,8 @@ class _MePageState extends ConsumerState<MePage> {
         backgroundColor: Colors.transparent,
       ),
       body: ListView(
+        // 显式 padding 需自行避让悬浮 dock 底部（≈116）
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 116),
         children: [
           // 个人概览（静态玻璃卡）
           Padding(

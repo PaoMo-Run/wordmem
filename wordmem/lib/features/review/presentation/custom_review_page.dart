@@ -280,12 +280,11 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
               GlassContainer(
-                blur: 16,
+                blur: 0,
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
@@ -442,7 +441,6 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           Column(
             children: [
               LinearProgressIndicator(value: progress, minHeight: 3),
@@ -481,7 +479,6 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           Center(
             child: Padding(
               padding: const EdgeInsets.all(32),

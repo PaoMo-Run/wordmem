@@ -64,8 +64,6 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           stats.totalWords == 0
               ? const EmptyState(
                   icon: Icons.bar_chart_outlined,
@@ -84,7 +82,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
 
                         // 掌握状态分布
                         GlassContainer(
-                          blur: 16,
+                          blur: 0,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -101,7 +99,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
 
                         // 趋势图
                         GlassContainer(
-                          blur: 16,
+                          blur: 0,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -149,7 +147,7 @@ class _OverviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GlassContainer(
-      blur: 16,
+      blur: 0,
       child: Column(
         children: [
           Row(

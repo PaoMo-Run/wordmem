@@ -109,7 +109,6 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
         ),
         body: Stack(
           children: [
-            const AppBackground(),
             AdaptiveContent(
               child: TabBarView(
                 children: [
@@ -178,10 +177,10 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
                 const SizedBox(width: 8),
                 GlassButton(
                   onPressed: () => _startSynonymChallenge(g, i),
-                  label: '开始测试',
+                  label: '测试',
                   blur: 0,
-                  height: 38,
-                  radius: 12,
+                  height: 46,
+                  radius: 14,
                 ),
               ],
             ),
@@ -269,10 +268,10 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
                 const SizedBox(width: 8),
                 GlassButton(
                   onPressed: () => _startRootChallenge(m),
-                  label: '开始测试',
+                  label: '测试',
                   blur: 0,
-                  height: 38,
-                  radius: 12,
+                  height: 46,
+                  radius: 14,
                 ),
               ],
             ),

@@ -123,14 +123,13 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           AdaptiveContent(
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 // 内置免费服务一键启用（tinted glass 强调）
                 GlassContainer(
-                  blur: 16,
+                  blur: 0,
                   tint: theme.colorScheme.primary,
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -295,7 +294,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
 
           // 隐私与使用说明
           GlassContainer(
-            blur: 16,
+            blur: 0,
             padding: const EdgeInsets.all(12),
             child: Text(
               '说明：\n'

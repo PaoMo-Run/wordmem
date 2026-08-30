@@ -159,8 +159,6 @@ class _StoryEditPageState extends ConsumerState<StoryEditPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -224,7 +222,7 @@ class _StoryEditPageState extends ConsumerState<StoryEditPage> {
             )
           else
             GlassContainer(
-              blur: 16,
+              blur: 0,
               padding: const EdgeInsets.all(12),
               child: Text(
                 story.translation.isEmpty ? '（无中文对照）' : story.translation,
@@ -247,7 +245,7 @@ class _StoryEditPageState extends ConsumerState<StoryEditPage> {
           GlassButton(
             onPressed: _startQuiz,
             icon: Icons.quiz_outlined,
-            label: '开始测试',
+            label: '测试',
             tinted: true,
           ),
           // 测试历史

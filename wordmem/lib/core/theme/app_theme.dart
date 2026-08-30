@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'colors.dart';
 
@@ -39,7 +40,6 @@ class AppTheme {
       error: AppColors.error,
     );
 
-    final bg = isDark ? AppColors.darkBg : AppColors.lightBg;
     final onBg = isDark ? AppColors.darkOnBg : AppColors.lightOnBg;
     final surface = isDark ? AppColors.darkSurface : AppColors.lightSurface;
     final outline = isDark ? AppColors.darkOutline : AppColors.lightOutline;
@@ -51,14 +51,33 @@ class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor: bg,
+      // 背景透明：aurora 由 MaterialApp.builder 的 AppBackground 全局提供
+      // （2026-08-31：所有页面含 push 详情页统一玻璃世界，消除黑条白字割裂）
+      scaffoldBackgroundColor: Colors.transparent,
+
+      // v8：切页用轻量 FadeForwards（450ms，fade + 轻前推）。
+      // `backgroundColor: Colors.transparent` 防止它默认在过渡期铺一层
+      // 不透明 `ColorScheme.surface` 盖住 aurora 背景造成闪屏。
+      // iOS/macOS 保留 CupertinoPageTransitionsBuilder（原生滑动 + 边缘返回手势）。
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android:
+              FadeForwardsPageTransitionsBuilder(backgroundColor: Colors.transparent),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows:
+              FadeForwardsPageTransitionsBuilder(backgroundColor: Colors.transparent),
+          TargetPlatform.linux:
+              FadeForwardsPageTransitionsBuilder(backgroundColor: Colors.transparent),
+        },
+      ),
 
       // ── AppBar ──
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
-        scrolledUnderElevation: 0.5,
-        backgroundColor: bg,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.transparent,
         foregroundColor: onBg,
         surfaceTintColor: Colors.transparent,
       ),

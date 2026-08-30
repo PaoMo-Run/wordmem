@@ -29,6 +29,18 @@ import '../../domain/services/root_matcher.dart';
 final appRouter = GoRouter(
   initialLocation: '/today',
   routes: [
+    // ── 全局背景壳（v5/v8 演进）──
+    // 所有路由（tab + push 详情页）都包一层 aurora 背景（v8 起为纯静态，
+    // 不再走 60fps 时钟动画），保证视觉一致、过渡期间无闪屏。
+    ShellRoute(
+      builder: (context, state, child) => Stack(
+        fit: StackFit.expand,
+        children: [
+          const AppBackground(),
+          child,
+        ],
+      ),
+      routes: [
     // 底部导航 Shell Route
     ShellRoute(
       builder: (context, state, child) => MainShell(child: child),
@@ -167,6 +179,8 @@ final appRouter = GoRouter(
         return StoryQuizRoute(id: id, modeName: mode);
       },
     ),
+      ],
+    ),
   ],
 );
 
@@ -220,13 +234,8 @@ class MainShell extends StatelessWidget {
         return Scaffold(
           // extendBody：内容延伸到悬浮 dock 之后，玻璃才有背景可透（液体玻璃关键）
           extendBody: true,
-          body: Stack(
-            children: [
-              // 全局 aurora 光斑背景（所有 tab 页共享的高级材质底）
-              const AppBackground(),
-              child,
-            ],
-          ),
+          // 背景由路由层全局 ShellRoute 的 AppBackground 统一提供（v5 起，全项目唯一一份）
+          body: child,
           bottomNavigationBar: GlassNavBar(
             currentIndex: selected,
             onChanged: (i) => context.go(_destinations[i].path),

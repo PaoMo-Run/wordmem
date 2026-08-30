@@ -44,6 +44,20 @@ List<double> _saturateMatrix(double s) => [
 /// 最大尺寸（而非内容尺寸），导致每个玻璃元素全屏化（nav dock 5 胶囊铺满
 /// 全屏、内容被盖死的根因）。正确结构：**装饰层 `Positioned.fill` 铺满、
 /// 内容层（唯一非定位 child）决定容器尺寸**。
+///
+/// ⚠️ 2026-08-31 三次修复（对齐/点击 bug，勿再犯）：
+/// Stack 必须用 **`StackFit.passthrough`**（内容层继承**父级**约束而非 Stack 自身
+/// 尺寸）。默认 loose 会让内容层收缩在容器左上角 → nav 胶囊图标/文字左对齐、
+/// InkWell 只覆盖内容宽（点按钮空白处无效）的根因。passthrough 下内容层在
+/// 紧约束父级（Row>Expanded、ListView 条目）自动撑满容器宽，InkWell 覆盖整个
+/// 容器，内部元素再各自居中。
+///
+/// ⚠️ 2026-08-31 四次修复（实时 blur 冻结，勿再犯）：
+/// **列表内/滚动内容之上的玻璃一律 `blur: 0` 静态磨砂**——Flutter 引擎对
+/// BackdropFilter 的滚动内容采样滞后（滑动时冻结、到顶/到底才刷新）。
+/// 静态磨砂靠「更高填充不透明度 + 亮描边 + 高光 + 阴影」呈现磨砂质感，
+/// 背景用**流动光斑动画**提供实时可感知的透出效果。`blur > 0` 仅保留给
+/// 背景完全静态的场景（当前 App 无此用法，全静态）。
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -60,7 +74,7 @@ class GlassContainer extends StatelessWidget {
     this.radius = 18,
     this.tint,
     this.onTap,
-    this.blur = 24,
+    this.blur = 0,
     this.elevated = true,
   });
 
@@ -74,23 +88,28 @@ class GlassContainer extends StatelessWidget {
     // 单条渐变同时呈现「顶部高光 → 主体 → 底部微光」
     final List<Color> colors;
     final List<double> stops;
+    // 静态磨砂配方（2026-08-31 v5 去灰）：填充不透明度适中（太高会压成灰蒙），
+    // 靠「亮描边 + 顶部高光 + 轻阴影」呈现通透磨砂，背景流动色彩透出
     if (tint == null) {
+      // v11 退回 v8 的低不透明度：v10 把磨砂层加厚后，远看像脏污的"灰片"，
+      // 失去了"玻璃透出背景"的核心质感。回到 v8 参数（dark 0.15/0.06、light 0.40/0.13）。
+      // 真正的"叠加/文字突出"在后续重做实时模糊时再处理（v4 文档已记录引擎层无解）。
       colors = [
-        Colors.white.withValues(alpha: isDark ? 0.12 : 0.30),
-        Colors.white.withValues(alpha: isDark ? 0.04 : 0.09),
+        Colors.white.withValues(alpha: isDark ? 0.15 : 0.40),
+        Colors.white.withValues(alpha: isDark ? 0.06 : 0.13),
       ];
       stops = const [0.0, 1.0];
     } else {
       colors = [
-        Colors.white.withValues(alpha: isDark ? 0.10 : 0.26),
-        base.withValues(alpha: isDark ? 0.24 : 0.22),
-        base.withValues(alpha: isDark ? 0.08 : 0.08),
-        Colors.white.withValues(alpha: isDark ? 0.03 : 0.07),
+        Colors.white.withValues(alpha: isDark ? 0.12 : 0.34),
+        base.withValues(alpha: isDark ? 0.22 : 0.30),
+        base.withValues(alpha: isDark ? 0.07 : 0.08),
+        Colors.white.withValues(alpha: isDark ? 0.03 : 0.06),
       ];
       stops = const [0.0, 0.38, 0.85, 1.0];
     }
     final borderColor = isDark
-        ? Colors.white.withValues(alpha: tint != null ? 0.20 : 0.13)
+        ? Colors.white.withValues(alpha: tint != null ? 0.20 : 0.14)
         : Colors.white.withValues(alpha: tint != null ? 0.62 : 0.55);
 
     // 内容层（交互）——必须放在 blur 之上，否则 BackdropFilter 的
@@ -123,29 +142,33 @@ class GlassContainer extends StatelessWidget {
 
     if (blur > 0) {
       // 真·液体玻璃：blur 只包装饰层，内容层叠加在上
+      // （v5 起 App 内已无 blur>0 用例，仅保留给静态背景场景）
       return DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
           boxShadow: [
             BoxShadow(
               color: cs.shadow.withValues(
-                alpha: isDark ? 0.35 : 0.10,
+                alpha: isDark ? 0.25 : 0.06,
               ),
-              blurRadius: 32,
-              offset: const Offset(0, 12),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: Stack(
+            // passthrough：内容层继承父约束（紧约束下自动撑满容器宽，
+            // InkWell 覆盖整个容器；loose 会导致内容收缩在左上角）
+            fit: StackFit.passthrough,
             children: [
               // 装饰层铺满容器；内容层（下方 content）决定 Stack 尺寸
               Positioned.fill(
                 child: BackdropFilter(
                   filter: ImageFilter.compose(
                     outer: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                    inner: ColorFilter.matrix(_saturateMatrix(1.8)),
+                    inner: ColorFilter.matrix(_saturateMatrix(2.0)),
                   ),
                   child: glassFill,
                 ),
@@ -166,17 +189,18 @@ class GlassContainer extends StatelessWidget {
             // elevated=false：轻阴影（长列表条目，避免叠影）
             color: cs.shadow.withValues(
               alpha: !elevated
-                  ? (isDark ? 0.15 : 0.04)
-                  : (isDark ? 0.35 : 0.10),
+                  ? (isDark ? 0.12 : 0.03)
+                  : (isDark ? 0.25 : 0.06),
             ),
-            blurRadius: elevated ? 32 : 12,
-            offset: elevated ? const Offset(0, 12) : const Offset(0, 3),
+            blurRadius: elevated ? 20 : 10,
+            offset: elevated ? const Offset(0, 8) : const Offset(0, 3),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: Stack(
+          fit: StackFit.passthrough,
           children: [
             Positioned.fill(child: glassFill),
             content,
@@ -191,7 +215,7 @@ class GlassContainer extends StatelessWidget {
 ///
 /// [tinted]=true 为主 CTA（primary 调味玻璃 + primary 文字，浅色深青字/深色亮青字）；
 /// [tinted]=false 为次级清透玻璃。禁用态自动降为灰调玻璃 + onSurfaceVariant。
-/// [blur] 透传玻璃容器：长列表内的按钮传 0（静态玻璃），页面级主 CTA 用默认 24。
+/// [blur] 透传玻璃容器：默认 0（静态磨砂，滚动内容之上必须用 0）。
 class GlassButton extends StatelessWidget {
   final String label;
   final IconData? icon;
@@ -209,7 +233,7 @@ class GlassButton extends StatelessWidget {
     this.tinted = false,
     this.height = 54,
     this.radius = 18,
-    this.blur = 24,
+    this.blur = 0,
   });
 
   @override
@@ -229,7 +253,10 @@ class GlassButton extends StatelessWidget {
       tint: tint,
       radius: radius,
       blur: blur,
-      padding: EdgeInsets.zero,
+      // 水平留白：此前 EdgeInsets.zero 导致「按钮宽度 == 文字宽度」，
+      // 文案视觉上铺满整颗按钮（如词群记忆「开始测试」）。加 18 左右留白后，
+      // 短文案（如「测试」）也能与按钮高度形成协调比例。
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       child: SizedBox(
         height: height,
         child: Row(
@@ -293,9 +320,15 @@ class GlassNavBar extends StatelessWidget {
       onTap: () => onChanged(i),
       radius: 20,
       tint: selected ? cs.primary : null,
+      // 静态玻璃（blur: 0）：dock 悬浮于滚动内容之上，实时 blur 会被 Flutter
+      // 引擎按旧帧采样（滑动时冻结、停下才重渲，体验割裂）→ 用静态玻璃 +
+      // 通透填充/描边/阴影，内容从胶囊后滚过仍清晰可见，且无冻结伪影。
+      blur: 0,
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(
             selected ? d.selectedIcon : d.icon,
@@ -355,53 +388,118 @@ class GlassNavDestination {
   });
 }
 
-/// 全局高级材质背景：aurora 柔光斑（品牌 teal 系）
+/// 全局高级材质背景：**静态** aurora 光斑
+/// （品牌 teal 系 + 冷靛纵深 + 暖点提氛围）
 ///
-/// 放在 MainShell 最底层，所有 tab 页共享；玻璃材质依赖它透出光斑。
+/// 2026-08-31 v8 最后一搏（用户真机 v7 反馈"关 Impeller 仍无效"后重判）：
+/// 旧版光斑直径 520-560 逻辑像素，在 K60 Pro（屏幕逻辑宽 ~480）上**比屏幕还大**——
+/// 6 个超大径向渐变 + 各自中心向外渐隐到 0 → 重叠成**均匀平涂**
+///（看上去"静态青绿"，实际渲染了但被自己糊成一片）。深色模式 alpha 0.05-0.16
+/// 也太低，看不出独立光晕。
+///
+/// 切页卡顿的另一个根因：旧版每帧 `ValueListenableBuilder` + `Transform` 重建
+///（60fps × 节点重建），叠加新页玻璃 rasterize 爆掉帧预算。
+///
+/// v8 修复：
+/// 1. **背景改纯静态**——去除动画（无 ValueListenableBuilder / Transform / 时钟），
+///    零后台成本；同时彻底删除空转 60fps 的 AuroraTickerHost；
+/// 2. **光斑改小改亮**——直径降到 200-320 逻辑像素（小于屏宽），dark 模式主光斑
+///    alpha 0.16→0.40，做出 6 个**独立可辨**的彩色光晕（不再叠成糊）；
+/// 3. 切页轻量化：见 app_theme 的 `pageTransitionsTheme`（FadeForwards +
+///    透明背景，无 OOM/闪屏）。
 class AppBackground extends StatelessWidget {
   const AppBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Stack(
       fit: StackFit.expand,
-      clipBehavior: Clip.hardEdge,
       children: [
+        // 静态底色
         ColoredBox(color: isDark ? AppColors.darkBg : AppColors.lightBg),
-        _blob(
-          Alignment.topLeft,
-          420,
-          AppColors.seed,
-          isDark ? 0.16 : 0.20,
-          translation: const Offset(-0.16, -0.14),
-        ),
-        _blob(
-          Alignment.centerRight,
-          480,
-          AppColors.glowCyan,
-          isDark ? 0.10 : 0.15,
-          translation: const Offset(0.24, 0.02),
-        ),
-        _blob(
-          Alignment.bottomLeft,
-          380,
-          AppColors.glowMint,
-          isDark ? 0.08 : 0.14,
-          translation: const Offset(-0.10, 0.30),
+        // 静态光斑层（RepaintBoundary 隔离：避免页面内容重绘时牵连背景重光栅化）
+        RepaintBoundary(
+          child: _AuroraBlobs(isDark: isDark),
         ),
       ],
     );
   }
+}
 
+/// 静态 6 光斑：小尺寸 + 高 alpha，确保独立可辨、不再叠成平涂
+class _AuroraBlobs extends StatelessWidget {
+  final bool isDark;
+  const _AuroraBlobs({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: _blobs(isDark),
+    );
+  }
+
+  List<Widget> _blobs(bool isDark) => [
+        // 主锚点：左上 teal（品牌主光，最亮最大）
+        _blob(
+          Alignment.topLeft,
+          320,
+          AppColors.seed,
+          isDark ? 0.40 : 0.30,
+          const Offset(-0.10, -0.10),
+        ),
+        // 右侧蓝绿（中景光）
+        _blob(
+          Alignment.centerRight,
+          300,
+          AppColors.glowCyan,
+          isDark ? 0.28 : 0.22,
+          const Offset(0.15, 0.00),
+        ),
+        // 左下薄荷（底光）
+        _blob(
+          Alignment.bottomLeft,
+          260,
+          AppColors.glowMint,
+          isDark ? 0.22 : 0.18,
+          const Offset(-0.05, 0.20),
+        ),
+        // 右下靛蓝（冷色纵深，压住画面重心）
+        _blob(
+          Alignment.bottomRight,
+          240,
+          AppColors.glowIndigo,
+          isDark ? 0.20 : 0.14,
+          const Offset(0.10, 0.18),
+        ),
+        // 右上暖琥珀（对向暖点，克制用量）
+        _blob(
+          Alignment.topRight,
+          200,
+          AppColors.glowWarm,
+          isDark ? 0.16 : 0.10,
+          const Offset(0.20, -0.08),
+        ),
+        // 中下紫罗兰（底部暗光，平滑过渡）
+        _blob(
+          Alignment.bottomCenter,
+          240,
+          AppColors.glowViolet,
+          isDark ? 0.18 : 0.12,
+          const Offset(0.0, 0.25),
+        ),
+      ];
+
+  /// 三停径向渐变光斑：中心最实 → 中段渐弱 → 外缘透明（比两停过渡更柔和）
   Widget _blob(
     Alignment alignment,
     double size,
     Color color,
-    double alpha, {
+    double alpha, [
     Offset translation = Offset.zero,
-  }) {
+  ]) {
     return Align(
       alignment: alignment,
       child: FractionalTranslation(
@@ -414,8 +512,10 @@ class AppBackground extends StatelessWidget {
             gradient: RadialGradient(
               colors: [
                 color.withValues(alpha: alpha),
+                color.withValues(alpha: alpha * 0.45),
                 color.withValues(alpha: 0.0),
               ],
+              stops: const [0.0, 0.42, 1.0],
             ),
           ),
         ),

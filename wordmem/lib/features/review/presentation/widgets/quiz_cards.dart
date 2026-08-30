@@ -78,7 +78,7 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
             const SizedBox(height: 16),
             // 英文单词题干（玻璃卡）
             GlassContainer(
-              blur: 16,
+              blur: 0,
               padding: const EdgeInsets.all(20),
               child: Text(
                 widget.word,
@@ -258,7 +258,7 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
             const SizedBox(height: 16),
             // 中文释义题干（玻璃卡）
             GlassContainer(
-              blur: 16,
+              blur: 0,
               padding: const EdgeInsets.all(16),
               child: Text(
                 widget.definition,
@@ -470,7 +470,7 @@ class _DictationCardState extends State<DictationCard> {
             const SizedBox(height: 16),
             // 释义题干（玻璃卡）
             GlassContainer(
-              blur: 16,
+              blur: 0,
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [

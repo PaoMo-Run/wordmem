@@ -77,8 +77,11 @@ class AppColors {
 
   // ────────────────────────── 背景光斑（aurora 高级材质背景） ──────────────────────────
   /// 光斑色仅供 AppBackground 径向渐变使用，页面禁止直接引用
-  static const Color glowCyan = Color(0xFF26A69A);  // 蓝绿（teal 400）
-  static const Color glowMint = Color(0xFF80CBC4);  // 薄荷（teal 200）
+  static const Color glowCyan = Color(0xFF26A69A);   // 蓝绿（teal 400）
+  static const Color glowMint = Color(0xFF80CBC4);   // 薄荷（teal 200）
+  static const Color glowIndigo = Color(0xFF7986CB); // 靛蓝（冷色纵深，暗角）
+  static const Color glowWarm = Color(0xFFFFB74D);   // 暖琥珀（对向暖点，提氛围）
+  static const Color glowViolet = Color(0xFF9575CD); // 紫罗兰（底部暗光）
 
   // ────────────────────────── 今日快捷入口图标色（收敛为 8 语义 token） ──────────────────────────
   static const Color quickAddWord = Color(0xFF2F7BD6);      // 添加单词（蓝）

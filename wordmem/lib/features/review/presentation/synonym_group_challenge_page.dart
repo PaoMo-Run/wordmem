@@ -166,7 +166,6 @@ class _SynonymGroupChallengePageState
         body: Stack(
           fit: StackFit.expand,
           children: [
-            const AppBackground(),
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -214,7 +213,6 @@ class _SynonymGroupChallengePageState
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           Column(
             children: [
               LinearProgressIndicator(
@@ -250,7 +248,7 @@ class _SynonymGroupChallengePageState
                       const SizedBox(height: 16),
                       // 核心中文释义（玻璃卡）
                       GlassContainer(
-                        blur: 16,
+                        blur: 0,
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           _group['def'] as String? ?? '',

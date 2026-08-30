@@ -7,7 +7,6 @@ import '../../../domain/models/story.dart';
 import '../../../domain/models/story_quiz.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
-import '../../../shared/widgets/glass.dart';
 import '../../../infra/ai/ai_exception.dart';
 import 'story_word_picker_sheet.dart';
 import 'widgets/story_tappable_text.dart';
@@ -462,7 +461,6 @@ class _StoryPageState extends ConsumerState<StoryPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           AdaptiveContent(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -715,29 +713,30 @@ class _StoryPageState extends ConsumerState<StoryPage> {
               ),
             ],
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            // v11 修「RIGHT OVERFLOWED BY X PIXELS」溢出：4 个 TextButton.icon
+            // 在窄屏下 Row 装不下，从 Row 改为 Wrap（自动换行 + runSpacing 8）。
+            // 用户在手机上看到的"竖排版权字"其实是 Flutter 的 debug 溢出警告条。
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (story.id != null) ...[
+                if (story.id != null)
                   TextButton.icon(
                     onPressed: _generating ? null : _startQuiz,
                     icon: const Icon(Icons.quiz_outlined, size: 18),
                     label: const Text('测试'),
                   ),
-                  const SizedBox(width: 8),
-                ],
                 TextButton.icon(
                   onPressed: _generating ? null : _regenerate,
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('重新生成'),
                 ),
-                const SizedBox(width: 8),
                 TextButton.icon(
                   onPressed: () => _editStory(story),
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('编辑'),
                 ),
-                const SizedBox(width: 8),
                 TextButton.icon(
                   onPressed: _generating ? null : () => _saveToLibrary(story),
                   icon: const Icon(Icons.bookmark_add_outlined, size: 18),

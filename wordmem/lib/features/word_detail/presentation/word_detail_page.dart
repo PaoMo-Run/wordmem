@@ -339,8 +339,6 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           AdaptiveContent(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -349,7 +347,7 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                 children: [
                   // 卡片信息
                   GlassContainer(
-                    blur: 16,
+                    blur: 0,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -421,7 +419,7 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                   // 近义词
                   if (_synonyms.isNotEmpty) ...[
                     GlassContainer(
-                      blur: 16,
+                      blur: 0,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -483,7 +481,7 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                   // 词根群
                   if (_rootGroups.isNotEmpty) ...[
                     GlassContainer(
-                      blur: 16,
+                      blur: 0,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -567,7 +565,7 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
 
                   // FSRS 状态
                   GlassContainer(
-                    blur: 16,
+                    blur: 0,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

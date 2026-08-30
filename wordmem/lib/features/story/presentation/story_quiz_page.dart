@@ -29,7 +29,6 @@ class StoryQuizRoute extends ConsumerWidget {
         body: const Stack(
           fit: StackFit.expand,
           children: [
-            AppBackground(),
             Center(child: Text('短文不存在或已被删除')),
           ],
         ),
@@ -422,7 +421,6 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           _quiz.isEmpty
               ? Center(
                   child: Text(
@@ -443,7 +441,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
                             _buildSentenceList(theme)
                           else
                             GlassContainer(
-                              blur: 16,
+                              blur: 0,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -720,7 +718,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GlassContainer(
-          blur: 16,
+          blur: 0,
           tint: theme.colorScheme.primary,
           child: Column(
             children: [

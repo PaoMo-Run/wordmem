@@ -39,6 +39,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 关闭 Impeller 渲染器，回退 Skia：
+             红米 K60 Pro（骁龙 8 Gen 2 / Adreno 740）/ HyperOS 上 Impeller
+             对径向渐变（光斑背景）渲染失败 + 切页着色器首次编译卡顿。
+             Skia 在 Adreno 上渲染成熟，径向渐变正常、无首次编译掉帧。 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
 
     <queries>

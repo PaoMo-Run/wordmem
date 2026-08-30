@@ -37,8 +37,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           ListView(
             children: [
               // 复习设置

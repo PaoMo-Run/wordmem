@@ -18,6 +18,8 @@ class WordMemApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
       routerConfig: appRouter,
+      // v8：aurora 背景改纯静态（见 glass.dart AppBackground），无动画时钟
+      builder: (context, child) => child ?? const SizedBox.shrink(),
     );
   }
 }

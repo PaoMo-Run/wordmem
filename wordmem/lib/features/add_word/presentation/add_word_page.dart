@@ -140,8 +140,6 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -230,7 +228,7 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
   Widget _buildMatchResult(ThemeData theme) {
     if (_matchResult == null) {
       return GlassContainer(
-        blur: 16,
+        blur: 0,
         child: Column(
           children: [
             Icon(Icons.search_off, color: theme.colorScheme.outline),
@@ -253,7 +251,7 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
     final relation = _matchResult!.exchangeRelation;
 
     return GlassContainer(
-      blur: 16,
+      blur: 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

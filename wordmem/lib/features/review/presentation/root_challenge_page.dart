@@ -276,7 +276,6 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           switch (_phase) {
             'empty' => Center(
                 child: Text(

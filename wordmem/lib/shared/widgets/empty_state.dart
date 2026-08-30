@@ -5,7 +5,7 @@ import 'glass.dart';
 /// 空状态组件
 class EmptyState extends StatelessWidget {
   final IconData icon;
-  final String title;
+  final String? title;
   final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
@@ -13,7 +13,7 @@ class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
     required this.icon,
-    required this.title,
+    this.title,
     this.subtitle,
     this.actionLabel,
     this.onAction,
@@ -29,13 +29,15 @@ class EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 64, color: theme.colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(color: theme.colorScheme.onSurface),
-              textAlign: TextAlign.center,
-            ),
+            if (title != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                title!,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(color: theme.colorScheme.onSurface),
+                textAlign: TextAlign.center,
+              ),
+            ],
             if (subtitle != null) ...[
               const SizedBox(height: 8),
               Text(

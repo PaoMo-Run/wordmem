@@ -127,8 +127,6 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
       ),
       body: Stack(
         children: [
-          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
-          const AppBackground(),
           _loading
               ? const Center(child: CircularProgressIndicator())
               : _stories.isEmpty

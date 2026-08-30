@@ -6,7 +6,6 @@ import '../../../shared/widgets/empty_state.dart';
 import '../../../domain/models/review_rating.dart';
 import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
-import '../../../shared/widgets/glass.dart';
 import 'widgets/quiz_cards.dart';
 
 /// 今日复习页面（原"开始复习"）
@@ -268,7 +267,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         body: const Stack(
           fit: StackFit.expand,
           children: [
-            AppBackground(),
             LoadingIndicator(message: '加载复习队列...'),
           ],
         ),

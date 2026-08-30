@@ -113,16 +113,6 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
               if (mounted) _loadQuickActions();
             },
           ),
-          if (stats.totalWords == 0) ...[
-            const SizedBox(height: 28),
-            EmptyState(
-              icon: Icons.menu_book_outlined,
-              title: '开始你的词汇之旅',
-              subtitle: '添加第一个单词，或从文本中批量导入',
-              actionLabel: '添加单词',
-              onAction: () => context.push('/add-word'),
-            ),
-          ],
         ],
       ),
     );
@@ -383,20 +373,27 @@ class _PrimaryAction extends StatelessWidget {
     final actionable = due > 0;
     final goAdd = !actionable && !hasWords;
 
-    final icon =
-        actionable ? Icons.play_arrow : (goAdd ? Icons.add : Icons.check);
-    final label = actionable
-        ? '开始今日复习 · $due 词'
-        : (goAdd ? '添加第一个单词' : '今日任务已完成');
+    // 空词库：主按钮位直接显示「添加单词」（2026-08-31 用户要求：
+    // 按钮上移到主行动位，下方 EmptyState 整块已删）
+    if (goAdd) {
+      return SizedBox(
+        width: double.infinity,
+        child: GlassButton(
+          onPressed: () => context.push('/add-word'),
+          icon: Icons.add,
+          label: '添加单词',
+          tinted: true,
+        ),
+      );
+    }
+
+    final icon = actionable ? Icons.play_arrow : Icons.check;
+    final label = actionable ? '开始今日复习 · $due 词' : '今日任务已完成';
 
     return SizedBox(
       width: double.infinity,
       child: GlassButton(
-        onPressed: actionable
-            ? () => context.push('/review')
-            : goAdd
-                ? () => context.push('/add-word')
-                : null,
+        onPressed: actionable ? () => context.push('/review') : null,
         icon: icon,
         label: label,
         tinted: true,
@@ -495,7 +492,7 @@ class _QuickActionCard extends StatelessWidget {
     return GlassContainer(
       onTap: onTap,
       radius: 16,
-      blur: 16,
+      blur: 0,
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

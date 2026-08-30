@@ -81,7 +81,6 @@ class _TodayQuickActionsEditorPageState
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(

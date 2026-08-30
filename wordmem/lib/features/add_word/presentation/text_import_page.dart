@@ -98,7 +98,6 @@ class _TextImportPageState extends ConsumerState<TextImportPage> {
       ),
       body: Stack(
         children: [
-          const AppBackground(),
           SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
