@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/colors.dart';
 import '../../../domain/models/story.dart';
 import '../../../domain/models/story_quiz.dart';
 import '../../../domain/services/story_quiz_engine.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 
 // 路由包装：按 story id + mode 加载短文后进入答题页
 class StoryQuizRoute extends ConsumerWidget {
@@ -19,8 +21,18 @@ class StoryQuizRoute extends ConsumerWidget {
     final story = repo.getById(id);
     if (story == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('短文测试')),
-        body: const Center(child: Text('短文不存在或已被删除')),
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('短文测试'),
+          backgroundColor: Colors.transparent,
+        ),
+        body: const Stack(
+          fit: StackFit.expand,
+          children: [
+            AppBackground(),
+            Center(child: Text('短文不存在或已被删除')),
+          ],
+        ),
       );
     }
     return StoryQuizPage(
@@ -376,7 +388,9 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
         _results.values.where((ok) => ok).length;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text('${widget.mode.label}测试'),
         actions: [
           // 拓展模式：中文翻译显示开关
@@ -406,71 +420,76 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
             ),
         ],
       ),
-      body: _quiz.isEmpty
-          ? Center(
-              child: Text(
-                '该短文没有可挖空的词',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      // 短文整篇呈现（复习/巩固）或逐句卡片（拓展）
-                      if (widget.mode == StoryQuizMode.extend)
-                        _buildSentenceList(theme)
-                      else
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  story.title.isEmpty
-                                      ? '未命名短文'
-                                      : story.title,
-                                  style: theme.textTheme.titleMedium,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  widget.mode.desc,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color:
-                                        theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _buildStoryBody(theme),
-                              ],
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 16),
-                      if (!_submitted)
-                        FilledButton.icon(
-                          onPressed: _quiz.isEmpty ? null : _submit,
-                          icon: const Icon(Icons.task_alt),
-                          label: const Text('提交判定'),
-                        )
-                      else ...[
-                        _buildResultSection(theme, correctCount),
-                      ],
-                    ],
+      body: Stack(
+        children: [
+          const AppBackground(),
+          _quiz.isEmpty
+              ? Center(
+                  child: Text(
+                    '该短文没有可挖空的词',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
+                )
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          // 短文整篇呈现（复习/巩固）或逐句卡片（拓展）
+                          if (widget.mode == StoryQuizMode.extend)
+                            _buildSentenceList(theme)
+                          else
+                            GlassContainer(
+                              blur: 16,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    story.title.isEmpty
+                                        ? '未命名短文'
+                                        : story.title,
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    widget.mode.desc,
+                                    style: theme.textTheme.bodySmall
+                                        ?.copyWith(
+                                      color:
+                                          theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildStoryBody(theme),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                          if (!_submitted)
+                            GlassButton(
+                              onPressed: _quiz.isEmpty ? null : _submit,
+                              icon: Icons.task_alt,
+                              label: '提交判定',
+                              tinted: true,
+                            )
+                          else ...[
+                            _buildResultSection(theme, correctCount),
+                          ],
+                        ],
+                      ),
+                    ),
+                    // 底部内联输入栏（巩固/拓展模式，未提交时显示）
+                    if (!_submitted &&
+                        widget.mode != StoryQuizMode.review &&
+                        _quiz.blanks.isNotEmpty)
+                      _buildInputBar(theme),
+                  ],
                 ),
-                // 底部内联输入栏（巩固/拓展模式，未提交时显示）
-                if (!_submitted &&
-                    widget.mode != StoryQuizMode.review &&
-                    _quiz.blanks.isNotEmpty)
-                  _buildInputBar(theme),
-              ],
-            ),
+        ],
+      ),
     );
   }
 
@@ -557,12 +576,15 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
         const SizedBox(height: 8),
         ..._sentences.map((s) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              child: GlassContainer(
+                // 逐句卡片：静态玻璃（blur 0）避免滚动掉帧
+                blur: 0,
+                elevated: false,
+                radius: 14,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                       // 句子序号
                       Row(
                         children: [
@@ -621,7 +643,6 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
                     ],
                   ),
                 ),
-              ),
             )),
       ],
     );
@@ -698,40 +719,40 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Card(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Text(
-                  '得分 $correctCount/${blanks.length}',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+        GlassContainer(
+          blur: 16,
+          tint: theme.colorScheme.primary,
+          child: Column(
+            children: [
+              Text(
+                '得分 $correctCount/${blanks.length}',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  correctCount == blanks.length
-                      ? '全部答对，太棒了！'
-                      : '答错的词可加入词库继续复习',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                correctCount == blanks.length
+                    ? '全部答对，太棒了！'
+                    : '答错的词可加入词库继续复习',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         if (wrongs.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text('错题回顾', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: wrongs.map((i) {
+          GlassContainer(
+            blur: 0,
+            elevated: false,
+            radius: 14,
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: wrongs.map((i) {
                   final blank = blanks[i];
                   final isSelected = _selectedWrongWords.contains(blank.word);
                   return Column(
@@ -825,7 +846,6 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
                 }).toList(),
               ),
             ),
-          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -834,7 +854,8 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
                   if (_selectedWrongWords.length == wrongs.length) {
                     _selectedWrongWords.clear();
                   } else {
-                    _selectedWrongWords.addAll(wrongs.map((i) => blanks[i].word));
+                    _selectedWrongWords
+                        .addAll(wrongs.map((i) => blanks[i].word));
                   }
                 }),
                 icon: const Icon(Icons.select_all, size: 18),
@@ -843,14 +864,19 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
                     : '全部选择'),
               ),
               const Spacer(),
-              FilledButton.icon(
+              GlassButton(
                 onPressed: _addingToLibrary
                     ? null
-                    : (_selectedWrongWords.isEmpty ? null : _addWrongToLibrary),
-                icon: const Icon(Icons.playlist_add, size: 18),
-                label: Text(_addingToLibrary
+                    : (_selectedWrongWords.isEmpty
+                        ? null
+                        : _addWrongToLibrary),
+                icon: Icons.playlist_add,
+                label: _addingToLibrary
                     ? '加入中...'
-                    : '加入词库 (${_selectedWrongWords.length})'),
+                    : '加入词库 (${_selectedWrongWords.length})',
+                tinted: true,
+                height: 44,
+                blur: 0,
               ),
             ],
           ),
@@ -867,11 +893,13 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
             if (_nextStoryId != null) ...[
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: GlassButton(
                   onPressed: () => context.pushReplacement(
                       '/story-quiz/$_nextStoryId/${widget.mode.name}'),
-                  icon: const Icon(Icons.arrow_forward, size: 18),
-                  label: const Text('下一篇短文'),
+                  icon: Icons.arrow_forward,
+                  label: '下一篇短文',
+                  tinted: true,
+                  height: 48,
                 ),
               ),
             ],
@@ -918,7 +946,9 @@ class _BlankWidget extends StatelessWidget {
     Color? color;
     if (submitted) {
       color = isCorrect == true
-          ? Colors.green.shade600
+          ? (Theme.of(context).brightness == Brightness.dark
+              ? AppColors.ratingGoodDark
+              : AppColors.ratingGood)
           : theme.colorScheme.error;
     } else if (hasAnswer) {
       color = theme.colorScheme.primary;
@@ -934,7 +964,6 @@ class _BlankWidget extends StatelessWidget {
             '${index ?? ''}',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
-              fontSize: 10,
               height: 1.0,
             ),
           ),

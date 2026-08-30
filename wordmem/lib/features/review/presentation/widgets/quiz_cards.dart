@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../domain/models/word_option.dart';
+import '../../../../shared/widgets/glass.dart';
 
 /// 统一的测验卡片组件集合
 ///
@@ -9,6 +10,9 @@ import '../../../../domain/models/word_option.dart';
 /// 2. ChooseWordCard 四选一（看中文释义，选对应英文单词）
 /// 3. DictationCard 默写（看中文释义/首字母提示，拼写英文）
 /// 所有卡片均带"跳过"选项。
+///
+/// 设计约定（2026-08-30 液体玻璃）：题干卡玻璃化 + 主按钮 GlassButton；
+/// 评分色深浅自适应（dark 亮化版），正文对比度 ≥4.5:1。
 
 /// 英译汉选择题卡片
 ///
@@ -41,6 +45,13 @@ class EnToZhChoiceCard extends StatefulWidget {
 class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
   int? _selected;
 
+  Color get _goodColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingGoodDark
+      : AppColors.ratingGood;
+  Color get _againColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingAgainDark
+      : AppColors.ratingAgain;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -60,19 +71,15 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
             Text(
               '选择与下列单词对应的中文释义',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            // 英文单词题干
-            Container(
-              width: double.infinity,
+            // 英文单词题干（玻璃卡）
+            GlassContainer(
+              blur: 16,
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
               child: Text(
                 widget.word,
                 style: theme.textTheme.headlineSmall?.copyWith(
@@ -109,21 +116,18 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
                     ? '回答正确！'
                     : '正确答案：${widget.definition.isEmpty ? widget.word : widget.definition}',
                 style: TextStyle(
-                  color: correct ? AppColors.ratingGood : AppColors.ratingAgain,
+                  color: correct ? _goodColor : _againColor,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              SizedBox(
+              GlassButton(
+                onPressed: widget.onNext,
+                label: widget.isLast ? '完成' : '下一题',
+                tinted: true,
                 height: 48,
-                child: FilledButton(
-                  onPressed: widget.onNext,
-                  child: Text(
-                    widget.isLast ? '完成' : '下一题',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                blur: 0,
               ),
             ],
             const SizedBox(height: 8),
@@ -149,13 +153,13 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
 
     if (answered) {
       if (isCorrectOpt) {
-        bg = AppColors.ratingGood.withValues(alpha: 0.15);
-        border = AppColors.ratingGood;
-        fg = AppColors.ratingGood;
+        bg = _goodColor.withValues(alpha: 0.15);
+        border = _goodColor;
+        fg = _goodColor;
       } else if (selected) {
-        bg = AppColors.ratingAgain.withValues(alpha: 0.15);
-        border = AppColors.ratingAgain;
-        fg = AppColors.ratingAgain;
+        bg = _againColor.withValues(alpha: 0.15);
+        border = _againColor;
+        fg = _againColor;
       }
     }
 
@@ -182,7 +186,8 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
             ),
             child: Text(
               opt.definition.isEmpty ? opt.word : opt.definition,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
             ),
           ),
@@ -220,6 +225,13 @@ class ChooseWordCard extends StatefulWidget {
 class _ChooseWordCardState extends State<ChooseWordCard> {
   int? _selected;
 
+  Color get _goodColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingGoodDark
+      : AppColors.ratingGood;
+  Color get _againColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingAgainDark
+      : AppColors.ratingAgain;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -239,18 +251,15 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
             Text(
               '选择与下列释义对应的单词',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
+            // 中文释义题干（玻璃卡）
+            GlassContainer(
+              blur: 16,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
               child: Text(
                 widget.definition,
                 style: theme.textTheme.titleMedium,
@@ -283,21 +292,18 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
               Text(
                 correct ? '回答正确！' : '正确答案：${widget.word}',
                 style: TextStyle(
-                  color: correct ? AppColors.ratingGood : AppColors.ratingAgain,
+                  color: correct ? _goodColor : _againColor,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              SizedBox(
+              GlassButton(
+                onPressed: widget.onNext,
+                label: widget.isLast ? '完成' : '下一题',
+                tinted: true,
                 height: 48,
-                child: FilledButton(
-                  onPressed: widget.onNext,
-                  child: Text(
-                    widget.isLast ? '完成' : '下一题',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                blur: 0,
               ),
             ],
             const SizedBox(height: 8),
@@ -323,13 +329,13 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
 
     if (answered) {
       if (isCorrectOpt) {
-        bg = AppColors.ratingGood.withValues(alpha: 0.15);
-        border = AppColors.ratingGood;
-        fg = AppColors.ratingGood;
+        bg = _goodColor.withValues(alpha: 0.15);
+        border = _goodColor;
+        fg = _goodColor;
       } else if (selected) {
-        bg = AppColors.ratingAgain.withValues(alpha: 0.15);
-        border = AppColors.ratingAgain;
-        fg = AppColors.ratingAgain;
+        bg = _againColor.withValues(alpha: 0.15);
+        border = _againColor;
+        fg = _againColor;
       }
     }
 
@@ -356,7 +362,8 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
             ),
             child: Text(
               opt.word,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: theme.textTheme.bodyLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           // 提交后显示该选项释义
@@ -366,7 +373,7 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
               child: Text(
                 opt.definition,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -406,6 +413,13 @@ class _DictationCardState extends State<DictationCard> {
   final _focus = FocusNode();
   bool _answered = false;
   bool _correct = false;
+
+  Color get _goodColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingGoodDark
+      : AppColors.ratingGood;
+  Color get _againColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingAgainDark
+      : AppColors.ratingAgain;
 
   @override
   void dispose() {
@@ -449,18 +463,15 @@ class _DictationCardState extends State<DictationCard> {
             Text(
               widget.showHint ? '根据释义和首字母提示默写单词' : '根据释义默写单词',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
+            // 释义题干（玻璃卡）
+            GlassContainer(
+              blur: 16,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
               child: Column(
                 children: [
                   Text(
@@ -482,8 +493,7 @@ class _DictationCardState extends State<DictationCard> {
                     Text(
                       '共 ${widget.word.length} 个字母',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color:
-                            theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -522,31 +532,26 @@ class _DictationCardState extends State<DictationCard> {
               Text(
                 _correct ? '正确！' : '正确答案：${widget.word}',
                 style: TextStyle(
-                  color:
-                      _correct ? AppColors.ratingGood : AppColors.ratingAgain,
+                  color: _correct ? _goodColor : _againColor,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              SizedBox(
+              GlassButton(
+                onPressed: widget.onNext,
+                label: widget.isLast ? '完成' : '下一题',
+                tinted: true,
                 height: 48,
-                child: FilledButton(
-                  onPressed: widget.onNext,
-                  child: Text(
-                    widget.isLast ? '完成' : '下一题',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                blur: 0,
               ),
             ] else
-              SizedBox(
+              GlassButton(
+                onPressed: _submit,
+                label: '提交',
+                tinted: true,
                 height: 48,
-                child: FilledButton(
-                  onPressed: _submit,
-                  child: const Text('提交',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
+                blur: 0,
               ),
             const SizedBox(height: 8),
             TextButton.icon(
@@ -577,8 +582,10 @@ class _DirectionChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(text,
-          style: TextStyle(
-              color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+          style: Theme.of(context)
+              .textTheme
+              .labelMedium
+              ?.copyWith(color: color, fontWeight: FontWeight.w600)),
     );
   }
 }

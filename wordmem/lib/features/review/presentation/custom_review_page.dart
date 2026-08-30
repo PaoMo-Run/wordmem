@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
 import 'widgets/quiz_cards.dart';
@@ -10,6 +11,8 @@ import 'widgets/quiz_cards.dart';
 ///
 /// 按"添加日期"筛选词汇，采用与今日复习一致的三段式测验：
 /// 英译汉翻卡 → 四选一 → 默写。纯练习，不更新 FSRS 排程。
+///
+/// 设计约定（2026-08-30 液体玻璃）：三个 phase 均带 aurora 背景 + 玻璃卡。
 class CustomReviewPage extends ConsumerStatefulWidget {
   const CustomReviewPage({super.key});
 
@@ -266,86 +269,94 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     final count = _previewCount();
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text('自选复习'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, color: theme.colorScheme.primary, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
+          const AppBackground(),
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              GlassContainer(
+                blur: 16,
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        color: theme.colorScheme.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '自选复习为纯练习模式，不影响学习算法排程。包含英译汉、选单词、默写三个环节。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('选择词汇范围',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(_presetLabels.length, (i) {
+                  final selected = !_useCustom && _preset == i;
+                  return ChoiceChip(
+                    label: Text(_presetLabels[i]),
+                    selected: selected,
+                    onSelected: (_) => setState(() {
+                      _useCustom = false;
+                      _preset = i;
+                    }),
+                  );
+                }),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickRange,
+                icon: const Icon(Icons.date_range, size: 18),
+                label: Text(
+                    _useCustom && _customRange != null ? _label : '自定义日期范围'),
+                style: _useCustom
+                    ? OutlinedButton.styleFrom(
+                        foregroundColor: theme.colorScheme.primary,
+                        side: BorderSide(color: theme.colorScheme.primary),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              if (count >= 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    '自选复习为纯练习模式，不影响学习算法排程。包含英译汉、选单词、默写三个环节。',
+                    count > 0 ? '共 $count 个单词' : '该范围内暂无单词',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      color: count > 0
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text('选择词汇范围',
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(_presetLabels.length, (i) {
-              final selected = !_useCustom && _preset == i;
-              return ChoiceChip(
-                label: Text(_presetLabels[i]),
-                selected: selected,
-                onSelected: (_) => setState(() {
-                  _useCustom = false;
-                  _preset = i;
-                }),
-              );
-            }),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _pickRange,
-            icon: const Icon(Icons.date_range, size: 18),
-            label: Text(_useCustom && _customRange != null ? _label : '自定义日期范围'),
-            style: _useCustom
-                ? OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                    side: BorderSide(color: theme.colorScheme.primary),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 8),
-          if (count >= 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                count > 0 ? '共 $count 个单词' : '该范围内暂无单词',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: count > 0
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
+              const SizedBox(height: 28),
+              GlassButton(
+                onPressed: _startQuiz,
+                icon: Icons.play_arrow,
+                label: '开始自选复习',
+                tinted: true,
               ),
-            ),
-          const SizedBox(height: 28),
-          FilledButton.icon(
-            onPressed: _startQuiz,
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('开始自选复习'),
+            ],
           ),
         ],
       ),
@@ -420,23 +431,30 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     }
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text(title),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          LinearProgressIndicator(value: progress, minHeight: 3),
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: card,
+          const AppBackground(),
+          Column(
+            children: [
+              LinearProgressIndicator(value: progress, minHeight: 3),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: card,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -452,87 +470,97 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
         : 0;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text('复习完成'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                percent >= 80 ? Icons.emoji_events : Icons.check_circle_outline,
-                size: 72,
-                color: percent >= 80 ? AppColors.ratingEasy : theme.colorScheme.outline,
+      body: Stack(
+        children: [
+          const AppBackground(),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    percent >= 80
+                        ? Icons.emoji_events
+                        : Icons.check_circle_outline,
+                    size: 72,
+                    color: percent >= 80
+                        ? AppColors.ratingEasy
+                        : theme.colorScheme.outline,
+                  ),
+                  const SizedBox(height: 16),
+                  Text('本轮自选复习完成',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      )),
+                  const SizedBox(height: 8),
+                  Text(
+                    '综合正确率 $percent%',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: percent >= 80
+                          ? AppColors.ratingGood
+                          : AppColors.ratingAgain,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '范围：$_rangeLabel',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _resultRow(theme, '英译汉',
+                      '$_enToZhCorrect / $_enToZhAnsweredCount',
+                      Icons.translate, AppColors.primary),
+                  const SizedBox(height: 8),
+                  _resultRow(theme, '选单词', '$_chooseCorrect / $total',
+                      Icons.checklist, AppColors.ratingEasy),
+                  const SizedBox(height: 8),
+                  _resultRow(theme, '默写', '$_dictationCorrect / $total',
+                      Icons.edit_note, AppColors.ratingHard),
+                  const SizedBox(height: 32),
+                  GlassButton(
+                    onPressed: _startQuiz,
+                    icon: Icons.refresh,
+                    label: '再来一轮',
+                    tinted: true,
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: () => context.pop(),
+                      child: const Text('返回'),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text('本轮自选复习完成',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  )),
-              const SizedBox(height: 8),
-              Text(
-                '综合正确率 $percent%',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: percent >= 80 ? AppColors.ratingGood : AppColors.ratingAgain,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '范围：$_rangeLabel',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _resultRow(theme, '英译汉', '$_enToZhCorrect / $_enToZhAnsweredCount',
-                  Icons.translate, AppColors.primary),
-              const SizedBox(height: 8),
-              _resultRow(theme, '选单词', '$_chooseCorrect / $total',
-                  Icons.checklist, AppColors.ratingEasy),
-              const SizedBox(height: 8),
-              _resultRow(theme, '默写', '$_dictationCorrect / $total',
-                  Icons.edit_note, AppColors.ratingHard),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: FilledButton.icon(
-                  onPressed: _startQuiz,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('再来一轮'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton(
-                  onPressed: () => context.pop(),
-                  child: const Text('返回'),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _resultRow(
       ThemeData theme, String label, String value, IconData icon, Color color) {
-    return Container(
+    return GlassContainer(
+      blur: 0,
+      elevated: false,
+      radius: 12,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: Row(
         children: [
           Icon(icon, color: color, size: 20),

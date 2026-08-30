@@ -5,8 +5,11 @@ import '../../../infra/ai/ai_config.dart';
 import '../../../infra/ai/ai_exception.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
+import '../../../shared/widgets/glass.dart';
 
 /// AI 服务配置页（AI 接入端口的管理入口）
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 玻璃卡。
 class AiConfigPage extends ConsumerStatefulWidget {
   const AiConfigPage({super.key});
 
@@ -113,45 +116,55 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 服务设置')),
-      body: AdaptiveContent(
-        child: ListView(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('AI 服务设置'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
         children: [
-          // 内置免费服务一键启用
-          Card(
-            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Icon(Icons.bolt, color: theme.colorScheme.primary),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text('没有自己的 API？可一键启用内置免费服务（Agens Free），'
-                        '默认未配置时也会自动使用'),
+          const AppBackground(),
+          AdaptiveContent(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // 内置免费服务一键启用（tinted glass 强调）
+                GlassContainer(
+                  blur: 16,
+                  tint: theme.colorScheme.primary,
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.bolt, color: theme.colorScheme.primary),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                            '没有自己的 API？可一键启用内置免费服务（Agens Free），'
+                            '默认未配置时也会自动使用'),
+                      ),
+                      const SizedBox(width: 8),
+                      GlassButton(
+                        onPressed: () {
+                          final preset = AiPresets.agnes;
+                          setState(() {
+                            _providerName = preset.name;
+                            _baseUrlCtrl.text = preset.baseUrl;
+                            _modelCtrl.text = preset.defaultModel;
+                            _apiKeyCtrl.text = preset.apiKey ?? '';
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已填入内置免费服务，点击「保存」生效')),
+                          );
+                        },
+                        label: '一键使用',
+                        height: 40,
+                        radius: 12,
+                        blur: 0,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      final preset = AiPresets.agnes;
-                      setState(() {
-                        _providerName = preset.name;
-                        _baseUrlCtrl.text = preset.baseUrl;
-                        _modelCtrl.text = preset.defaultModel;
-                        _apiKeyCtrl.text = preset.apiKey ?? '';
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已填入内置免费服务，点击「保存」生效')),
-                      );
-                    },
-                    child: const Text('一键使用'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+                ),
+                const SizedBox(height: 16),
 
           Text('服务商', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -246,7 +259,7 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                     '建议：普通生成选「中」，对质量要求高选「高」或「极高」。'
                 : '深度思考已关闭，生成速度更快；开启后可选思考强度。',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 24),
@@ -258,7 +271,8 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
                   onPressed: _testing ? null : _testConnection,
                   icon: _testing
                       ? const SizedBox(
-                          width: 16, height: 16,
+                          width: 16,
+                          height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.wifi_tethering),
@@ -267,10 +281,12 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton.icon(
+                child: GlassButton(
                   onPressed: _saving ? null : _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('保存'),
+                  icon: Icons.save_outlined,
+                  label: '保存',
+                  tinted: true,
+                  height: 48,
                 ),
               ),
             ],
@@ -278,26 +294,27 @@ class _AiConfigPageState extends ConsumerState<AiConfigPage> {
           const SizedBox(height: 24),
 
           // 隐私与使用说明
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                '说明：\n'
-                '1. 接入后，「今日短文」「AI 陪练」等功能可调用所选 AI 生成个性化内容。\n'
-                '2. 仅当你主动使用 AI 功能时，学习数据（今日所学单词、掌握状态等）才会发送给所选服务商。\n'
-                '3. API Key 加密存储在本机（Android Keystore），不会上传到任何服务器。\n'
-                '4. 支持 DeepSeek / 智谱 GLM / Kimi / 通义千问 / 豆包 / OpenAI，'
-                '或选择「自定义」接入任意 OpenAI 兼容服务。\n'
-                '5. 未配置 API 时自动使用内置免费服务（Agens Free），可在任意服务商间切换。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
+          GlassContainer(
+            blur: 16,
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '说明：\n'
+              '1. 接入后，「今日短文」「AI 陪练」等功能可调用所选 AI 生成个性化内容。\n'
+              '2. 仅当你主动使用 AI 功能时，学习数据（今日所学单词、掌握状态等）才会发送给所选服务商。\n'
+              '3. API Key 加密存储在本机（Android Keystore），不会上传到任何服务器。\n'
+              '4. 支持 DeepSeek / 智谱 GLM / Kimi / 通义千问 / 豆包 / OpenAI，'
+              '或选择「自定义」接入任意 OpenAI 兼容服务。\n'
+              '5. 未配置 API 时自动使用内置免费服务（Agens Free），可在任意服务商间切换。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
         ],
       ),
       ),
-    );
+      ],
+    ),
+  );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/glass.dart';
+
 /// 指定单词选择器：搜索 + 多选，返回选中的单词列表。
 /// 以 showModalBottomSheet 形式打开。
 class StoryWordPickerSheet extends StatefulWidget {
@@ -102,13 +104,11 @@ class _StoryWordPickerSheetState extends State<StoryWordPickerSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () =>
-                      Navigator.of(context).pop(_selected.toList()),
-                  child: Text('确定（${_selected.length} 个）'),
-                ),
+              GlassButton(
+                onPressed: () =>
+                    Navigator.of(context).pop(_selected.toList()),
+                label: '确定（${_selected.length} 个）',
+                tinted: true,
               ),
             ],
           ),

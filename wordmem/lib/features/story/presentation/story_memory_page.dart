@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/story.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 import 'story_edit_page.dart';
 
 /// 短文记忆库：浏览已归档短文，支持查看 / 编辑 / 删除 / 取消归档
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 静态玻璃列表条目（blur 0）。
 class StoryMemoryPage extends ConsumerStatefulWidget {
   const StoryMemoryPage({super.key});
 
@@ -117,58 +120,68 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
     ref.listen(storyVersionProvider, (_, __) => _reload());
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('短文记忆库')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _stories.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.article_outlined,
-                        size: 56,
-                        color: theme.colorScheme.onSurfaceVariant,
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('短文记忆库'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
+        children: [
+          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
+          const AppBackground(),
+          _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _stories.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.article_outlined,
+                            size: 56,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '记忆库还是空的',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '在「今日短文」中生成并存入记忆库的短文会显示在这里',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '记忆库还是空的',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '在「今日短文」中生成并存入记忆库的短文会显示在这里',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _reload,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _stories.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, i) {
-                      final story = _stories[i];
-                      final sourceLabel = switch (story.source) {
-                        StorySource.ai => 'AI',
-                        StorySource.manual => '导入',
-                        StorySource.template => '模板',
-                      };
-                      final sourceColor = switch (story.source) {
-                        StorySource.ai => theme.colorScheme.primary,
-                        StorySource.manual => theme.colorScheme.tertiary,
-                        StorySource.template => theme.colorScheme.outline,
-                      };
-                      return Card(
-                        child: InkWell(
-                          onTap: () => _openStory(story),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _reload,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _stories.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, i) {
+                          final story = _stories[i];
+                          final sourceLabel = switch (story.source) {
+                            StorySource.ai => 'AI',
+                            StorySource.manual => '导入',
+                            StorySource.template => '模板',
+                          };
+                          final sourceColor = switch (story.source) {
+                            StorySource.ai => theme.colorScheme.primary,
+                            StorySource.manual => theme.colorScheme.tertiary,
+                            StorySource.template => theme.colorScheme.outline,
+                          };
+                          return GlassContainer(
+                            onTap: () => _openStory(story),
+                            // 列表条目：静态玻璃（blur 0）避免滚动掉帧
+                            blur: 0,
+                            elevated: false,
+                            radius: 14,
                             padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,13 +230,15 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
                                       '${story.updatedAt.month}月${story.updatedAt.day}日',
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
+                                        color: theme.colorScheme
+                                            .onSurfaceVariant,
                                       ),
                                     ),
                                     const Spacer(),
                                     IconButton(
                                       tooltip: '取消归档',
-                                      icon: const Icon(Icons.bookmark_remove_outlined,
+                                      icon: const Icon(
+                                          Icons.bookmark_remove_outlined,
                                           size: 18),
                                       onPressed: () => _unarchive(story),
                                     ),
@@ -231,18 +246,19 @@ class _StoryMemoryPageState extends ConsumerState<StoryMemoryPage> {
                                       tooltip: '删除',
                                       icon: const Icon(Icons.delete_outline,
                                           size: 18),
-                                      onPressed: () => _confirmDelete(story),
+                                      onPressed: () =>
+                                          _confirmDelete(story),
                                     ),
                                   ],
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                          );
+                        },
+                      ),
+                    ),
+        ],
+      ),
     );
   }
 }

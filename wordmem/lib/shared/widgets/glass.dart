@@ -33,6 +33,17 @@ List<double> _saturateMatrix(double s) => [
 /// [onTap] 非空时整体可点（自带涟漪）；
 /// [blur] 传 0 时跳过 BackdropFilter（**静态玻璃**）——长列表条目等高频项必须用 0，
 /// 否则每条一个 blur 会拖垮滚动性能。
+///
+/// ⚠️ 2026-08-31 修复（重大 bug）：
+/// 1. onTap 此前未接入任何点击处理 → 全 App 玻璃按钮不可点；
+/// 2. Flutter 的 `BackdropFilter` 不参与命中测试（hitTest 恒 false），
+///    点击层若在 blur 之下会连带失效 → 交互层必须放在 blur **之上**。
+///
+/// ⚠️ 2026-08-31 二次修复（尺寸 bug，勿再犯）：
+/// **禁止 `Stack(fit: StackFit.expand)`**——它会让 Stack 撑到父约束允许的
+/// 最大尺寸（而非内容尺寸），导致每个玻璃元素全屏化（nav dock 5 胶囊铺满
+/// 全屏、内容被盖死的根因）。正确结构：**装饰层 `Positioned.fill` 铺满、
+/// 内容层（唯一非定位 child）决定容器尺寸**。
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -82,7 +93,22 @@ class GlassContainer extends StatelessWidget {
         ? Colors.white.withValues(alpha: tint != null ? 0.20 : 0.13)
         : Colors.white.withValues(alpha: tint != null ? 0.62 : 0.55);
 
-    Widget content = DecoratedBox(
+    // 内容层（交互）——必须放在 blur 之上，否则 BackdropFilter 的
+    // hitTest 恒 false 会让内部 InkWell/GestureDetector 全部失效
+    Widget content = Padding(padding: padding, child: child);
+    if (onTap != null) {
+      content = Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(radius),
+          child: content,
+        ),
+      );
+    }
+
+    // 装饰层：blur + saturate + 渐变填充 + 亮边框（仅视觉，不承载交互）
+    Widget glassFill = DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -93,26 +119,45 @@ class GlassContainer extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: borderColor),
       ),
-      child: padding == EdgeInsets.zero
-          ? child
-          : Padding(padding: padding, child: child),
     );
 
-    // blur > 0：真·液体玻璃（实时模糊背后内容 + 提饱和）
-    // blur == 0：静态玻璃（半透明 + 亮边 + 阴影，无 blur），长列表/高频项用
     if (blur > 0) {
-      content = ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ImageFilter.compose(
-            outer: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-            inner: ColorFilter.matrix(_saturateMatrix(1.8)),
+      // 真·液体玻璃：blur 只包装饰层，内容层叠加在上
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: [
+            BoxShadow(
+              color: cs.shadow.withValues(
+                alpha: isDark ? 0.35 : 0.10,
+              ),
+              blurRadius: 32,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: Stack(
+            children: [
+              // 装饰层铺满容器；内容层（下方 content）决定 Stack 尺寸
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.compose(
+                    outer: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                    inner: ColorFilter.matrix(_saturateMatrix(1.8)),
+                  ),
+                  child: glassFill,
+                ),
+              ),
+              content,
+            ],
           ),
-          child: content,
         ),
       );
     }
 
+    // 静态玻璃（blur == 0）：无 BackdropFilter，无命中测试问题
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
@@ -129,7 +174,15 @@ class GlassContainer extends StatelessWidget {
           ),
         ],
       ),
-      child: content,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Stack(
+          children: [
+            Positioned.fill(child: glassFill),
+            content,
+          ],
+        ),
+      ),
     );
   }
 }
@@ -138,6 +191,7 @@ class GlassContainer extends StatelessWidget {
 ///
 /// [tinted]=true 为主 CTA（primary 调味玻璃 + primary 文字，浅色深青字/深色亮青字）；
 /// [tinted]=false 为次级清透玻璃。禁用态自动降为灰调玻璃 + onSurfaceVariant。
+/// [blur] 透传玻璃容器：长列表内的按钮传 0（静态玻璃），页面级主 CTA 用默认 24。
 class GlassButton extends StatelessWidget {
   final String label;
   final IconData? icon;
@@ -145,6 +199,7 @@ class GlassButton extends StatelessWidget {
   final bool tinted;
   final double height;
   final double radius;
+  final double blur;
 
   const GlassButton({
     super.key,
@@ -154,6 +209,7 @@ class GlassButton extends StatelessWidget {
     this.tinted = false,
     this.height = 54,
     this.radius = 18,
+    this.blur = 24,
   });
 
   @override
@@ -172,6 +228,7 @@ class GlassButton extends StatelessWidget {
       onTap: onPressed,
       tint: tint,
       radius: radius,
+      blur: blur,
       padding: EdgeInsets.zero,
       child: SizedBox(
         height: height,

@@ -7,6 +7,7 @@ import '../../../domain/models/story.dart';
 import '../../../domain/models/story_quiz.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../infra/ai/ai_exception.dart';
 import 'story_word_picker_sheet.dart';
 import 'widgets/story_tappable_text.dart';
@@ -454,50 +455,59 @@ class _StoryPageState extends ConsumerState<StoryPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('今日短文')),
-      body: AdaptiveContent(
-        child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildSourceSelector(theme),
-          const SizedBox(height: 16),
-          _buildWordSection(theme),
-          const SizedBox(height: 16),
-          _buildGenerateButton(),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _showOfflinePrompt,
-                  icon: const Icon(Icons.article_outlined),
-                  label: const Text('查看离线提示词'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _generating ? null : _pasteImport,
-                  icon: const Icon(Icons.content_paste_go_outlined),
-                  label: const Text('粘贴导入'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (_generationFailed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'AI 生成失败，可检查「设置 - AI 服务」、重试，或使用剪贴板中转生成。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ),
-          if (_story != null) _buildStoryCard(theme, _story!),
-        ],
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('今日短文'),
+        backgroundColor: Colors.transparent,
       ),
+      body: Stack(
+        children: [
+          const AppBackground(),
+          AdaptiveContent(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildSourceSelector(theme),
+                const SizedBox(height: 16),
+                _buildWordSection(theme),
+                const SizedBox(height: 16),
+                _buildGenerateButton(),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _showOfflinePrompt,
+                        icon: const Icon(Icons.article_outlined),
+                        label: const Text('查看离线提示词'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _generating ? null : _pasteImport,
+                        icon: const Icon(Icons.content_paste_go_outlined),
+                        label: const Text('粘贴导入'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (_generationFailed)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'AI 生成失败，可检查「设置 - AI 服务」、重试，或使用剪贴板中转生成。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                if (_story != null) _buildStoryCard(theme, _story!),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

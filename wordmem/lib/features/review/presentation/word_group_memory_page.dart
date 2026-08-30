@@ -6,6 +6,7 @@ import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../shared/widgets/mastery_badge.dart';
 import '../../../domain/services/root_matcher.dart';
 import '../../../domain/services/word_root_dict.dart';
@@ -13,6 +14,8 @@ import '../../../domain/services/word_root_dict.dart';
 /// 词群记忆（B 方案复习中心 → 自由练习）
 /// Tab 1 近义词群：按近义词聚类；Tab 2 词根群：按词根聚合
 /// 选择具体词群后进入对应挑战
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 静态玻璃列表卡（blur 0）。
 class WordGroupMemoryPage extends ConsumerStatefulWidget {
   const WordGroupMemoryPage({super.key});
 
@@ -93,7 +96,9 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
           title: const Text('词群记忆'),
           bottom: const TabBar(
             tabs: [
@@ -102,13 +107,18 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
             ],
           ),
         ),
-        body: AdaptiveContent(
-          child: TabBarView(
-            children: [
-              _buildSynonymTab(theme),
-              _buildRootTab(theme),
-            ],
-          ),
+        body: Stack(
+          children: [
+            const AppBackground(),
+            AdaptiveContent(
+              child: TabBarView(
+                children: [
+                  _buildSynonymTab(theme),
+                  _buildRootTab(theme),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -131,9 +141,14 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
         final g = _synonymGroups[i];
         final words = (g['words'] as List).cast<String>();
         final m = mastery[g['id'] as String] ?? 0;
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: Padding(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: GlassContainer(
+            onTap: () => _startSynonymChallenge(g, i),
+            // 列表条目：静态玻璃（blur 0）避免滚动掉帧
+            blur: 0,
+            elevated: false,
+            radius: 14,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
@@ -151,8 +166,7 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
                       Text(
                         '${words.length} 个近义词 · ${words.take(4).join(' / ')}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.5),
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                       ),
@@ -162,9 +176,12 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonal(
+                GlassButton(
                   onPressed: () => _startSynonymChallenge(g, i),
-                  child: const Text('开始测试'),
+                  label: '开始测试',
+                  blur: 0,
+                  height: 38,
+                  radius: 12,
                 ),
               ],
             ),
@@ -204,38 +221,61 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
       itemBuilder: (context, i) {
         final m = _rootMatches[i];
         final rm = rootMastery[m.root.root] ?? 0;
-        return Card(
-          margin: const EdgeInsets.only(bottom: 10),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-              child: Text(
-                m.root.root.toUpperCase().substring(0, 1),
-                style: const TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.w800),
-              ),
-            ),
-            title: Row(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: GlassContainer(
+            onTap: () => _startRootChallenge(m),
+            // 列表条目：静态玻璃（blur 0）
+            blur: 0,
+            elevated: false,
+            radius: 14,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
               children: [
-                Expanded(
+                CircleAvatar(
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                   child: Text(
-                    '${m.root.root} · ${m.root.meaning}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    m.root.root.toUpperCase().substring(0, 1),
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w800),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${m.root.root} · ${m.root.meaning}',
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${m.words.length} 个词 · ${m.words.take(3).join(' / ')}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
                 MasteryBadge(level: rm),
+                const SizedBox(width: 8),
+                GlassButton(
+                  onPressed: () => _startRootChallenge(m),
+                  label: '开始测试',
+                  blur: 0,
+                  height: 38,
+                  radius: 12,
+                ),
               ],
             ),
-            subtitle: Text('${m.words.length} 个词 · ${m.words.take(3).join(' / ')}',
-                maxLines: 1, overflow: TextOverflow.ellipsis),
-            trailing: FilledButton.tonal(
-              onPressed: () => _startRootChallenge(m),
-              child: const Text('开始测试'),
-            ),
-            onTap: () => _startRootChallenge(m),
           ),
         );
       },

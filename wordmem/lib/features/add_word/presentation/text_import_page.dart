@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/stats.dart';
 
 /// 文本批量导入页面
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 玻璃卡 + 玻璃按钮。
 class TextImportPage extends ConsumerStatefulWidget {
   const TextImportPage({super.key});
 
@@ -87,57 +91,60 @@ class _TextImportPageState extends ConsumerState<TextImportPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('文本批量导入')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '粘贴英文文本，自动提取并匹配词典中的单词',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('文本批量导入'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
+        children: [
+          const AppBackground(),
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '粘贴英文文本，自动提取并匹配词典中的单词',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _textController,
+                  decoration: const InputDecoration(
+                    hintText: '粘贴文章、段落或单词列表...',
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 10,
+                ),
+                const SizedBox(height: 12),
+                GlassButton(
+                  onPressed: _processing ? null : _analyze,
+                  icon: Icons.analytics_outlined,
+                  label: _processing ? '分析中...' : '分析文本',
+                  tinted: true,
+                ),
+                if (_result != null) ...[
+                  const SizedBox(height: 24),
+                  _buildResult(theme),
+                ],
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _textController,
-              decoration: const InputDecoration(
-                hintText: '粘贴文章、段落或单词列表...',
-                alignLabelWithHint: true,
-              ),
-              maxLines: 10,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _processing ? null : _analyze,
-              icon: _processing
-                  ? const SizedBox(
-                      height: 18, width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.analytics_outlined),
-              label: const Text('分析文本'),
-            ),
-            if (_result != null) ...[
-              const SizedBox(height: 24),
-              _buildResult(theme),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
       bottomNavigationBar: _result != null && _selectedWords.isNotEmpty
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: FilledButton(
+                child: GlassButton(
                   onPressed: _importing ? null : _importSelected,
-                  child: _importing
-                      ? const SizedBox(
-                          height: 20, width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text('导入选中的 ${_selectedWords.length} 个单词'),
+                  label: _importing
+                      ? '导入中...'
+                      : '导入选中的 ${_selectedWords.length} 个单词',
+                  tinted: true,
                 ),
               ),
             )
@@ -155,16 +162,23 @@ class _TextImportPageState extends ConsumerState<TextImportPage> {
           children: [
             _ResultStat(label: '提取', value: result.totalExtracted),
             const SizedBox(width: 12),
-            _ResultStat(label: '匹配', value: result.matchedWords.length, color: Colors.green),
+            _ResultStat(
+                label: '匹配',
+                value: result.matchedWords.length,
+                color: AppColors.success),
             const SizedBox(width: 12),
-            _ResultStat(label: '未匹配', value: result.unmatchedWords.length, color: Colors.orange),
+            _ResultStat(
+                label: '未匹配',
+                value: result.unmatchedWords.length,
+                color: AppColors.warning),
           ],
         ),
         const SizedBox(height: 16),
 
         // 匹配到的单词
         Text('匹配到的单词 (${result.matchedWords.length})',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 6,
@@ -193,19 +207,19 @@ class _TextImportPageState extends ConsumerState<TextImportPage> {
           Text('未匹配的单词 (${result.unmatchedWords.length})',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant,
               )),
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: result.unmatchedWords.map((word) => Chip(
-              label: Text(word),
-              visualDensity: VisualDensity.compact,
-              labelStyle: TextStyle(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
-            )).toList(),
+                  label: Text(word),
+                  visualDensity: VisualDensity.compact,
+                  labelStyle: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )).toList(),
           ),
         ],
       ],
@@ -224,12 +238,11 @@ class _ResultStat extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
+      child: GlassContainer(
+        blur: 0,
+        elevated: false,
+        radius: 12,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         child: Column(
           children: [
             Text(

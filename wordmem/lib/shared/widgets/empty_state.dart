@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/colors.dart';
+import 'glass.dart';
 
 /// 空状态组件
 class EmptyState extends StatelessWidget {
@@ -46,10 +47,11 @@ class EmptyState extends StatelessWidget {
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 24),
-              FilledButton.icon(
+              GlassButton(
                 onPressed: onAction,
-                icon: const Icon(Icons.add),
-                label: Text(actionLabel!),
+                icon: Icons.add,
+                label: actionLabel!,
+                tinted: true,
               ),
             ],
           ],

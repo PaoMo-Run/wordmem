@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/colors.dart';
+import '../../../shared/widgets/glass.dart';
 
 /// 关于页：版本信息 + 更新日志 + GitHub 项目地址 + 隐私政策
 class AboutPage extends StatefulWidget {
@@ -72,121 +73,131 @@ class _AboutPageState extends State<AboutPage> {
         _version.isEmpty ? 'v2.0.0' : 'v$_version${_buildNumber.isNotEmpty ? ' ($_buildNumber)' : ''}';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('关于词记')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('关于词记'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
         children: [
-          // 应用信息
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryLight],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('词',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 12),
-                Text('词记 WordMem',
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(versionText,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.6))),
-                const SizedBox(height: 4),
-                Text('离线英语词库 · 艾宾浩斯 7 周期复习',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.6))),
-                const SizedBox(height: 4),
-                Text('内置专业版词典 15529 词（含 490 航空专业词）',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface
-                            .withValues(alpha: 0.6))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // 项目地址 / 隐私政策
-          Card(
-            margin: EdgeInsets.zero,
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.code),
-                  title: const Text('GitHub 项目地址'),
-                  subtitle: const Text(_githubUrl),
-                  trailing: const Icon(Icons.open_in_new, size: 18),
-                  onTap: () => _openUrl(_githubUrl),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.copy_outlined),
-                  title: const Text('复制项目地址'),
-                  onTap: () => _copyToClipboard(_githubUrl),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.shield_outlined),
-                  title: const Text('隐私政策'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showPrivacy(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // 更新日志
-          Text('更新日志', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          ..._changelog.map((v) => Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
+          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
+          const AppBackground(),
+          ListView(
+            children: [
+              // 应用信息
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                child: Center(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('v${v.version} · ${v.date}',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 6),
-                      for (final item in v.items)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('· ',
-                                  style: TextStyle(
-                                      color: theme.colorScheme.primary,
-                                      fontWeight: FontWeight.w800)),
-                              Expanded(
-                                child: Text(item,
-                                    style: theme.textTheme.bodySmall),
-                              ),
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              AppColors.primary,
+                              AppColors.primaryLight,
                             ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                        alignment: Alignment.center,
+                        child: Text('词',
+                            style: theme.textTheme.headlineLarge?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('词记 WordMem',
+                          style: theme.textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(versionText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant)),
+                      const SizedBox(height: 4),
+                      Text('离线英语词库 · FSRS 间隔复习',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant)),
+                      const SizedBox(height: 4),
+                      Text('内置专业版词典 15529 词（含 490 航空专业词）',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),
-              )),
+              ),
+
+              // 项目地址 / 隐私政策
+              const _SectionHeader('更多信息'),
+              GlassSection(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.code),
+                    title: const Text('GitHub 项目地址'),
+                    subtitle: const Text(_githubUrl),
+                    trailing: const Icon(Icons.open_in_new, size: 18),
+                    onTap: () => _openUrl(_githubUrl),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.copy_outlined),
+                    title: const Text('复制项目地址'),
+                    onTap: () => _copyToClipboard(_githubUrl),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.shield_outlined),
+                    title: const Text('隐私政策'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _showPrivacy(),
+                  ),
+                ],
+              ),
+
+              // 更新日志
+              const _SectionHeader('更新日志'),
+              ..._changelog.map((v) => Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: GlassContainer(
+                      // 长列表条目：静态玻璃（blur 0），避免 8 个实时模糊拖垮滚动
+                      blur: 0,
+                      elevated: false,
+                      radius: 14,
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('v${v.version} · ${v.date}',
+                              style: theme.textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 6),
+                          for (final item in v.items)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('· ',
+                                      style: TextStyle(
+                                          color: theme.colorScheme.primary,
+                                          fontWeight: FontWeight.w800)),
+                                  Expanded(
+                                    child: Text(item,
+                                        style: theme.textTheme.bodySmall),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 24),
+            ],
+          ),
         ],
       ),
     );
@@ -221,9 +232,10 @@ class _AboutPageState extends State<AboutPage> {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
+                child: GlassButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('我知道了'),
+                  label: '我知道了',
+                  tinted: true,
                 ),
               ),
             ],
@@ -254,6 +266,27 @@ class _AboutPageState extends State<AboutPage> {
 如对本政策有疑问，可通过 GitHub 项目地址（Issues）与我们联系。
 
 更新日期：2026-08-20''';
+}
+
+/// 区块标题（与 settings_page / me_page 同款）
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
 }
 
 /// 更新日志条目

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/synonym_challenge.dart';
 import '../../../core/theme/colors.dart';
 
@@ -10,6 +11,8 @@ import '../../../core/theme/colors.dart';
 ///
 /// 每道题：上方中文释义，下方 8 个单词（2~4 个正确近义词）。
 /// 用户至少选出 2 个正确答案即为通过。支持跳过。
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 玻璃卡 + 评分色深浅自适应。
 class SynonymChallengePage extends ConsumerStatefulWidget {
   const SynonymChallengePage({super.key});
 
@@ -86,29 +89,55 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('近义词挑战')),
-        body: const LoadingIndicator(message: '生成挑战题目...'),
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: const Text('近义词挑战'),
+          backgroundColor: Colors.transparent,
+        ),
+        body: const Stack(
+          fit: StackFit.expand,
+          children: [
+            AppBackground(),
+            LoadingIndicator(message: '生成挑战题目...'),
+          ],
+        ),
       );
     }
     if (_finished) return _buildResult();
     if (_challenges.isEmpty) {
       return Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
           title: const Text('近义词挑战'),
           leading: IconButton(
             icon: const Icon(Icons.close),
             onPressed: () => context.pop(),
           ),
         ),
-        body: const EmptyState(
-          icon: Icons.hub_outlined,
-          title: '暂无可挑战的近义词',
-          subtitle: '词库中近义词不足，请先添加更多单词',
+        body: const Stack(
+          fit: StackFit.expand,
+          children: [
+            AppBackground(),
+            EmptyState(
+              icon: Icons.hub_outlined,
+              title: '暂无可挑战的近义词',
+              subtitle: '词库中近义词不足，请先添加更多单词',
+            ),
+          ],
         ),
       );
     }
     return _buildQuiz();
   }
+
+  // 深浅自适应的评分色（dark 亮化版，保证对比度）
+  Color get _goodColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingGoodDark
+      : AppColors.ratingGood;
+  Color get _againColor => Theme.of(context).brightness == Brightness.dark
+      ? AppColors.ratingAgainDark
+      : AppColors.ratingAgain;
 
   Widget _buildQuiz() {
     final theme = Theme.of(context);
@@ -117,105 +146,101 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
     final progress = _index / total;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text('近义词挑战 ${_index + 1} / $total'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          LinearProgressIndicator(value: progress, minHeight: 3),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '选出与下列释义对应的近义词（至少选 2 个）',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  // 释义
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer
-                          .withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      challenge.definition,
-                      style: theme.textTheme.titleMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // 8 个单词选项
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: challenge.options.map((word) {
-                      return _buildOptionChip(theme, word, challenge);
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  if (_submitted) ...[
-                    Text(
-                      _passedCurrent
-                          ? '通过！选对 $_correctSelected 个近义词'
-                          : '未通过（至少需选 2 个，当前选对 $_correctSelected 个）',
-                      style: TextStyle(
-                        color: _passedCurrent
-                            ? AppColors.ratingGood
-                            : AppColors.ratingAgain,
-                        fontWeight: FontWeight.w600,
+          const AppBackground(),
+          Column(
+            children: [
+              LinearProgressIndicator(value: progress, minHeight: 3),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '选出与下列释义对应的近义词（至少选 2 个）',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    // 漏选 / 错选单词的释义
-                    ..._buildReviewDefinitions(challenge),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 48,
-                      child: FilledButton(
-                        onPressed: _next,
+                      const SizedBox(height: 16),
+                      // 释义（玻璃卡）
+                      GlassContainer(
+                        blur: 16,
+                        padding: const EdgeInsets.all(16),
                         child: Text(
-                          _index < total - 1 ? '下一题' : '完成',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          challenge.definition,
+                          style: theme.textTheme.titleMedium,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                    ),
-                  ] else
-                    SizedBox(
-                      height: 48,
-                      child: FilledButton(
-                        onPressed: _selected.length >= 2 ? _submit : null,
-                        child: Text(
-                          _selected.length >= 2
+                      const SizedBox(height: 24),
+                      // 8 个单词选项
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
+                        children: challenge.options.map((word) {
+                          return _buildOptionChip(theme, word, challenge);
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 24),
+                      if (_submitted) ...[
+                        Text(
+                          _passedCurrent
+                              ? '通过！选对 $_correctSelected 个近义词'
+                              : '未通过（至少需选 2 个，当前选对 $_correctSelected 个）',
+                          style: TextStyle(
+                            color: _passedCurrent
+                                ? _goodColor
+                                : _againColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        // 漏选 / 错选单词的释义
+                        ..._buildReviewDefinitions(challenge),
+                        const SizedBox(height: 16),
+                        GlassButton(
+                          onPressed: _next,
+                          label: _index < total - 1 ? '下一题' : '完成',
+                          tinted: true,
+                          height: 48,
+                          blur: 0,
+                        ),
+                      ] else
+                        GlassButton(
+                          onPressed: _selected.length >= 2 ? _submit : null,
+                          label: _selected.length >= 2
                               ? '提交（已选 ${_selected.length} 个）'
                               : '至少选择 2 个单词',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          tinted: true,
+                          height: 48,
+                          blur: 0,
                         ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: _next,
+                        icon: const Icon(Icons.skip_next, size: 18),
+                        label: const Text('跳过'),
                       ),
-                    ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: _next,
-                    icon: const Icon(Icons.skip_next, size: 18),
-                    label: const Text('跳过'),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -247,7 +272,7 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
 
   Widget _defRow(String word, String definition, {required bool missed}) {
     final theme = Theme.of(context);
-    final color = missed ? AppColors.ratingAgain : AppColors.ratingHard;
+    final color = missed ? _againColor : AppColors.ratingHard;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -270,7 +295,7 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
           Text(
             definition,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -289,13 +314,13 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
 
     if (_submitted) {
       if (isCorrect) {
-        bg = AppColors.ratingGood.withValues(alpha: 0.15);
-        border = AppColors.ratingGood;
-        fg = AppColors.ratingGood;
+        bg = _goodColor.withValues(alpha: 0.15);
+        border = _goodColor;
+        fg = _goodColor;
       } else if (selected) {
-        bg = AppColors.ratingAgain.withValues(alpha: 0.15);
-        border = AppColors.ratingAgain;
-        fg = AppColors.ratingAgain;
+        bg = _againColor.withValues(alpha: 0.15);
+        border = _againColor;
+        fg = _againColor;
       }
     } else if (selected) {
       bg = theme.colorScheme.primaryContainer.withValues(alpha: 0.4);
@@ -315,7 +340,8 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
         ),
         child: Text(
           word,
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: fg),
+          style: theme.textTheme.titleSmall
+              ?.copyWith(fontWeight: FontWeight.w600, color: fg),
         ),
       ),
     );
@@ -327,57 +353,63 @@ class _SynonymChallengePageState extends ConsumerState<SynonymChallengePage> {
     final percent = total > 0 ? (_passed * 100 ~/ total) : 0;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text('挑战完成'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                percent >= 60 ? Icons.emoji_events : Icons.hub_outlined,
-                size: 72,
-                color: percent >= 60 ? AppColors.ratingEasy : theme.colorScheme.outline,
+      body: Stack(
+        children: [
+          const AppBackground(),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    percent >= 60 ? Icons.emoji_events : Icons.hub_outlined,
+                    size: 72,
+                    color: percent >= 60
+                        ? AppColors.ratingEasy
+                        : theme.colorScheme.outline,
+                  ),
+                  const SizedBox(height: 16),
+                  Text('近义词挑战完成',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      )),
+                  const SizedBox(height: 8),
+                  Text(
+                    '通过 $_passed / $total 题',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '通过率 $percent%',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: percent >= 60 ? _goodColor : _againColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  GlassButton(
+                    onPressed: () => context.pop(),
+                    label: '完成',
+                    tinted: true,
+                    height: 48,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text('近义词挑战完成',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  )),
-              const SizedBox(height: 8),
-              Text(
-                '通过 $_passed / $total 题',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '通过率 $percent%',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: percent >= 60 ? AppColors.ratingGood : AppColors.ratingAgain,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: FilledButton(
-                  onPressed: () => context.pop(),
-                  child: const Text('完成',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

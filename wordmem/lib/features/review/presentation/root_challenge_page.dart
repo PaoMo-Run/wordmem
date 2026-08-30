@@ -6,9 +6,12 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../domain/services/root_matcher.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 
 /// 词根挑战页
 /// 流程：词根卡片（弹层）→ 逐题（≤5 题，词根加粗，4 选 1 释义）→ 汇总
+///
+/// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 玻璃卡。
 class RootChallengePage extends ConsumerStatefulWidget {
   final RootMatch match;
   const RootChallengePage({super.key, required this.match});
@@ -266,21 +269,29 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text('词根挑战 · ${match.root.root}'),
       ),
-      body: switch (_phase) {
-        'empty' => Center(
-            child: Text('可出题数量不足（<2），请先添加更多含「${match.root.root}」的单词',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center),
-          ),
-        'intro' => const SizedBox.shrink(),
-        'quiz' => _buildQuiz(theme),
-        'result' => _buildResult(theme),
-        _ => const SizedBox.shrink(),
-      },
+      body: Stack(
+        children: [
+          const AppBackground(),
+          switch (_phase) {
+            'empty' => Center(
+                child: Text(
+                    '可出题数量不足（<2），请先添加更多含「${match.root.root}」的单词',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+              ),
+            'intro' => const SizedBox.shrink(),
+            'quiz' => _buildQuiz(theme),
+            'result' => _buildResult(theme),
+            _ => const SizedBox.shrink(),
+          },
+        ],
+      ),
     );
   }
 
@@ -303,7 +314,7 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
           const SizedBox(height: 8),
           Text('第 ${_index + 1}/${_questions.length} 题',
               style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                  color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: 24),
 
           // 单词（词根加粗高亮；提交后点击可跳详情页人工复核）
@@ -326,13 +337,13 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
               '点击单词可查看详情并人工调整词根归属',
               textAlign: TextAlign.center,
               style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                  color: theme.colorScheme.onSurfaceVariant),
             ),
           const SizedBox(height: 8),
           Text('请选出该单词的正确释义',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+                  color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(height: 20),
 
           // 4 选 1（状态色深浅自适应：正确绿 / 错误红 / 选中品牌色）
@@ -395,19 +406,14 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
 
           const Spacer(),
           // 提交 / 下一题
-          SizedBox(
-            width: double.infinity,
-            child: _submitted
-                ? FilledButton(
-                    onPressed: _next,
-                    child: Text(_index < _questions.length - 1
-                        ? '下一题'
-                        : '查看结果'),
-                  )
-                : FilledButton(
-                    onPressed: _selected == null ? null : _submit,
-                    child: const Text('提交'),
-                  ),
+          GlassButton(
+            onPressed: _submitted
+                ? _next
+                : (_selected == null ? null : _submit),
+            label: _submitted
+                ? (_index < _questions.length - 1 ? '下一题' : '查看结果')
+                : '提交',
+            tinted: true,
           ),
         ],
       ),
@@ -488,18 +494,25 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
           ),
         ],
         const SizedBox(height: 20),
-        ..._records.map((r) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                onTap: () => _openWordDetail(r.word),
-                leading: Icon(
-                  r.isCorrect ? Icons.check_circle : Icons.cancel,
-                  color: r.isCorrect ? correctColor : wrongColor,
+        ..._records.map((r) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GlassContainer(
+                // 列表条目：静态玻璃（blur 0）
+                blur: 0,
+                elevated: false,
+                radius: 14,
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  onTap: () => _openWordDetail(r.word),
+                  leading: Icon(
+                    r.isCorrect ? Icons.check_circle : Icons.cancel,
+                    color: r.isCorrect ? correctColor : wrongColor,
+                  ),
+                  title: Text.rich(_buildWordSpan(r.word, theme)),
+                  subtitle: Text('释义：${r.correctDef}'
+                      '${r.isCorrect ? '' : '\n你的选择：${r.userDef}'}'),
+                  trailing: const Icon(Icons.open_in_new, size: 16),
                 ),
-                title: Text.rich(_buildWordSpan(r.word, theme)),
-                subtitle: Text('释义：${r.correctDef}'
-                    '${r.isCorrect ? '' : '\n你的选择：${r.userDef}'}'),
-                trailing: const Icon(Icons.open_in_new, size: 16),
               ),
             )),
         const SizedBox(height: 12),
@@ -514,10 +527,12 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FilledButton.icon(
+              child: GlassButton(
                 onPressed: () => context.pop(),
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('返回词群记忆'),
+                icon: Icons.arrow_back,
+                label: '返回词群记忆',
+                tinted: true,
+                height: 48,
               ),
             ),
           ],
