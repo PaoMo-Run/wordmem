@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/colors.dart';
 import '../../../domain/models/story.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 
 /// 短文中心（B 方案第 3 个 tab）
 /// 今日短文入口卡片 + 记忆库最近列表
+///
+/// 设计约定（2026-08-30 液体玻璃改版）：背景由 MainShell aurora 提供；
+/// 今日入口卡 = tinted glass（primary 调味），记忆库列表 = 静态玻璃（blur 0）。
 class StoryCenterPage extends ConsumerStatefulWidget {
   const StoryCenterPage({super.key});
 
@@ -64,66 +67,53 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
           children: [
-            // 今日短文入口卡片（整卡可点击）
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () async {
-                  // await 返回后显式刷新（双保险：版本号监听 + 返回刷新）
-                  await context.push('/story');
-                  if (mounted) _reload();
-                },
-                child: Ink(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primaryDark, AppColors.primaryLight],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // 今日短文入口卡片（整卡可点击，tinted glass 主入口）
+            GlassContainer(
+              onTap: () async {
+                // await 返回后显式刷新（双保险：版本号监听 + 返回刷新）
+                await context.push('/story');
+                if (mounted) _reload();
+              },
+              tint: theme.colorScheme.primary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.auto_stories_outlined,
-                              color: Colors.white, size: 30),
-                          SizedBox(width: 10),
-                          Text('今日短文',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _todayWords > 0
-                            ? 'AI 用你今天学的 $_todayWords 个词生成一篇短文，巩固记忆'
-                            : '今天还没有学习新词，先去复习或添加单词吧',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text('去生成 / 阅读',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12)),
-                      ),
+                      Icon(Icons.auto_stories_outlined,
+                          color: theme.colorScheme.primary, size: 28),
+                      const SizedBox(width: 10),
+                      Text('今日短文',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w800)),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _todayWords > 0
+                        ? 'AI 用你今天学的 $_todayWords 个词生成一篇短文，巩固记忆'
+                        : '今天还没有学习新词，先去复习或添加单词吧',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer
+                          .withValues(alpha: theme.brightness == Brightness.dark
+                              ? 0.28
+                              : 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('去生成 / 阅读',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
@@ -131,7 +121,9 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
             // 记忆库
             Row(
               children: [
-                Text('记忆库', style: theme.textTheme.titleSmall),
+                Text('记忆库',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
                 const Spacer(),
                 TextButton(
                   onPressed: () async {
@@ -169,8 +161,11 @@ class _StoryCenterPageState extends ConsumerState<StoryCenterPage> {
                 ),
               )
             else
-              Card(
-                margin: EdgeInsets.zero,
+              GlassContainer(
+                blur: 0,
+                elevated: false,
+                radius: 14,
+                padding: EdgeInsets.zero,
                 child: Column(
                   children: [
                     for (final story in _stories)

@@ -30,7 +30,9 @@ List<double> _saturateMatrix(double s) => [
 /// 液体玻璃容器
 ///
 /// [tint] 传入主色即为 tinted glass（选中态/主 CTA 用），null 为清透玻璃；
-/// [onTap] 非空时整体可点（自带涟漪）。
+/// [onTap] 非空时整体可点（自带涟漪）；
+/// [blur] 传 0 时跳过 BackdropFilter（**静态玻璃**）——长列表条目等高频项必须用 0，
+/// 否则每条一个 blur 会拖垮滚动性能。
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -38,6 +40,7 @@ class GlassContainer extends StatelessWidget {
   final Color? tint;
   final VoidCallback? onTap;
   final double blur;
+  final bool elevated;
 
   const GlassContainer({
     super.key,
@@ -47,6 +50,7 @@ class GlassContainer extends StatelessWidget {
     this.tint,
     this.onTap,
     this.blur = 24,
+    this.elevated = true,
   });
 
   @override
@@ -78,43 +82,54 @@ class GlassContainer extends StatelessWidget {
         ? Colors.white.withValues(alpha: tint != null ? 0.20 : 0.13)
         : Colors.white.withValues(alpha: tint != null ? 0.62 : 0.55);
 
-    final glass = ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.compose(
-          outer: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          inner: ColorFilter.matrix(_saturateMatrix(1.8)),
+    Widget content = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+          stops: stops,
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: colors,
-              stops: stops,
-            ),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: borderColor),
-          ),
-          child: padding == EdgeInsets.zero
-              ? child
-              : Padding(padding: padding, child: child),
-        ),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: borderColor),
       ),
+      child: padding == EdgeInsets.zero
+          ? child
+          : Padding(padding: padding, child: child),
     );
+
+    // blur > 0：真·液体玻璃（实时模糊背后内容 + 提饱和）
+    // blur == 0：静态玻璃（半透明 + 亮边 + 阴影，无 blur），长列表/高频项用
+    if (blur > 0) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.compose(
+            outer: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            inner: ColorFilter.matrix(_saturateMatrix(1.8)),
+          ),
+          child: content,
+        ),
+      );
+    }
 
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha: isDark ? 0.35 : 0.10),
-            blurRadius: 32,
-            offset: const Offset(0, 12),
+            // elevated=false：轻阴影（长列表条目，避免叠影）
+            color: cs.shadow.withValues(
+              alpha: !elevated
+                  ? (isDark ? 0.15 : 0.04)
+                  : (isDark ? 0.35 : 0.10),
+            ),
+            blurRadius: elevated ? 32 : 12,
+            offset: elevated ? const Offset(0, 12) : const Offset(0, 3),
           ),
         ],
       ),
-      child: glass,
+      child: content,
     );
   }
 }

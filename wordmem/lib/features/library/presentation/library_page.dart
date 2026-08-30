@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/word.dart';
 import 'widgets/word_list_tile.dart';
 import 'widgets/filter_bar.dart';
@@ -142,17 +143,27 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   }
 
   /// 词典命中条目：显示单词 + 释义，点击跳转添加页并预填单词
+  /// （静态玻璃卡：列表条目禁用实时 blur，见 GlassContainer.blur=0）
   Widget _buildDictTile(DictWord dict) {
-    return ListTile(
-      leading: const Icon(Icons.menu_book_outlined),
-      title: Text(dict.word),
-      subtitle: Text(
-        dict.translation ?? '',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: GlassContainer(
+        blur: 0,
+        elevated: false,
+        radius: 14,
+        padding: EdgeInsets.zero,
+        child: ListTile(
+          leading: const Icon(Icons.menu_book_outlined),
+          title: Text(dict.word),
+          subtitle: Text(
+            dict.translation ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Icon(Icons.add_circle_outline, size: 20),
+          onTap: () => context.push('/add-word', extra: dict.word),
+        ),
       ),
-      trailing: const Icon(Icons.add_circle_outline, size: 20),
-      onTap: () => context.push('/add-word', extra: dict.word),
     );
   }
 
@@ -318,15 +329,24 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         itemBuilder: (context, i) {
           final group = quizGroups[i];
           final words = (group['words'] as List).cast<String>();
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: ExpansionTile(
-              title: Text(
-                group['title'] as String? ?? '短文测试',
-                style: theme.textTheme.titleSmall,
-              ),
-              subtitle: Text('${words.length} 个词'),
-              children: words
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: GlassContainer(
+              blur: 0,
+              elevated: false,
+              radius: 14,
+              padding: EdgeInsets.zero,
+              child: ExpansionTile(
+                title: Text(
+                  group['title'] as String? ?? '短文测试',
+                  style: theme.textTheme.titleSmall,
+                ),
+                subtitle: Text(
+                  '${words.length} 个词',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                children: words
                     .map((w) => ListTile(
                         dense: true,
                         leading: const Icon(Icons.arrow_right, size: 18),
@@ -350,6 +370,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                         },
                       ))
                   .toList(),
+              ),
             ),
           );
         },

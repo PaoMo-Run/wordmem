@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/glass.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/string_utils.dart';
 
-/// 词库列表项
+/// 词库列表项（静态玻璃：长列表条目禁用实时 blur，见 GlassContainer.blur=0）
 class WordListTile extends StatelessWidget {
   final Map<String, dynamic> word;
   final VoidCallback onTap;
@@ -29,104 +30,103 @@ class WordListTile extends StatelessWidget {
     final displayDef = customDef ?? note;
     final dueDate = due != null ? DateTime.tryParse(due) : null;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: InkWell(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: GlassContainer(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              // 掌握状态指示
-              Container(
-                width: 4,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        blur: 0,
+        elevated: false,
+        radius: 14,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            // 掌握状态指示
+            Container(
+              width: 4,
+              height: 40,
+              decoration: BoxDecoration(
+                color: statusColor,
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 12),
-              // 单词信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          wordText,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (isFavorite) ...[
-                          const SizedBox(width: 6),
-                          const Icon(Icons.star,
-                              size: 14, color: AppColors.favorite),
-                        ],
-                        const Spacer(),
-                        Text(
-                          statusLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: statusColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (displayDef.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+            ),
+            const SizedBox(width: 12),
+            // 单词信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
                       Text(
-                        StringUtils.truncate(displayDef, 50),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        wordText,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (isFavorite) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.star,
+                            size: 14, color: AppColors.favorite),
+                      ],
+                      const Spacer(),
+                      Text(
+                        statusLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: statusColor,
+                        ),
                       ),
                     ],
-                    if (tags.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 4,
-                        children: tags
-                            .split(',')
-                            .where((t) => t.trim().isNotEmpty)
-                            .take(3)
-                            .map((t) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    t.trim(),
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ))
-                            .toList(),
+                  ),
+                  if (displayDef.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      StringUtils.truncate(displayDef, 50),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              // 下次复习时间
-              if (dueDate != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    StringUtils.formatDue(dueDate),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                  ],
+                  if (tags.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 4,
+                      children: tags
+                          .split(',')
+                          .where((t) => t.trim().isNotEmpty)
+                          .take(3)
+                          .map((t) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  t.trim(),
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // 下次复习时间
+            if (dueDate != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  StringUtils.formatDue(dueDate),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
