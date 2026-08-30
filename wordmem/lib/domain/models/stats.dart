@@ -1,20 +1,41 @@
-/// 统计数据模型
+/// 今日统计
+///
+/// 口径（2026-08-30 修正）：
+/// - [dueNew] / [dueReview] 是「此刻到期」这一集合的**互斥切片**，两者之和即 [pendingReviews]；
+/// - [newWordsToday] 是「今日新增入库」的词量，与待处理量无关，仅作展示，不计入任务量；
+/// - [totalTasks] = 已完成 + 待处理，保证 [progress] 恒在 0..1。
+///   （旧口径 `pendingReviews + newWordsToday` 把两个不同语义相加，会让进度超过 100%）
 class TodayStats {
+  /// 今日新增入库的词量
   final int newWordsToday;
-  final int pendingReviews;
+  /// 到期待学的新词（reps = 0）
+  final int dueNew;
+  /// 到期待复习的熟词（reps > 0 且非 new）
+  final int dueReview;
+  /// 今日已完成的复习次数
   final int reviewedToday;
+  /// 词库总量
   final int totalWords;
 
   const TodayStats({
     this.newWordsToday = 0,
-    this.pendingReviews = 0,
+    this.dueNew = 0,
+    this.dueReview = 0,
     this.reviewedToday = 0,
     this.totalWords = 0,
   });
 
-  int get totalTasks => pendingReviews + newWordsToday;
+  /// 此刻待处理总数
+  int get pendingReviews => dueNew + dueReview;
+  /// 今日已完成
   int get completedTasks => reviewedToday;
-  double get progress => totalTasks == 0 ? 0 : completedTasks / totalTasks;
+  /// 今日任务总量（已完成 + 待处理）
+  int get totalTasks => completedTasks + pendingReviews;
+  /// 完成度，恒在 0..1
+  double get progress {
+    if (totalTasks == 0) return 0;
+    return (completedTasks / totalTasks).clamp(0.0, 1.0).toDouble();
+  }
 }
 
 /// 每日学习记录

@@ -20,12 +20,13 @@ class StatsDao {
       [startOfDay],
     ).first['c'] as int;
 
-    final pending = _v.select(
+    // 到期待学的新词（与下面的到期待复习互斥，两者相加即待处理总数）
+    final dueNew = _v.select(
       'SELECT COUNT(*) as c FROM user_words WHERE due <= ? AND reps = 0',
       [now.toIso8601String()],
     ).first['c'] as int;
 
-    final pendingReview = _v.select(
+    final dueReview = _v.select(
       'SELECT COUNT(*) as c FROM user_words WHERE due <= ? AND reps > 0 AND card_state != ?',
       [now.toIso8601String(), 'new'],
     ).first['c'] as int;
@@ -39,7 +40,8 @@ class StatsDao {
 
     return TodayStats(
       newWordsToday: newToday,
-      pendingReviews: pending + pendingReview,
+      dueNew: dueNew,
+      dueReview: dueReview,
       reviewedToday: reviewedToday,
       totalWords: total,
     );
