@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../domain/models/stats.dart';
@@ -163,7 +164,9 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
                         const SizedBox(height: 4),
                         _TaskLine(
                             icon: Icons.check_circle_outline,
-                            color: Colors.green,
+                            color: theme.brightness == Brightness.dark
+                                ? AppColors.ratingGoodDark
+                                : AppColors.ratingGood,
                             text: '已复习 ${stats.reviewedToday}'),
                       ],
                     ),
@@ -348,8 +351,17 @@ class _QuickActionCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(height: 6),
+              // 图标带彩色浅底，提升质感（避免裸图标廉价感）
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(height: 8),
               Text(label,
                   style: theme.textTheme.labelMedium
                       ?.copyWith(fontWeight: FontWeight.w600)),
