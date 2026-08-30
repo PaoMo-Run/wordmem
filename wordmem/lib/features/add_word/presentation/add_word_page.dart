@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../core/utils/tag_utils.dart';
 import '../../../domain/models/word.dart';
 
 /// 添加单词页面
+///
+/// 设计约定（2026-08-30 液体玻璃改版）：aurora 背景 + 玻璃卡；
+/// 保存按钮用 tinted GlassButton，收藏行用玻璃分组卡。
 class AddWordPage extends ConsumerStatefulWidget {
   /// 预填的单词（从词库词典搜索结果跳转时传入，自动搜索匹配）
   final String? initialWord;
@@ -129,110 +133,118 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('添加单词')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 单词输入
-            TextField(
-              controller: _wordController,
-              decoration: InputDecoration(
-                labelText: '单词',
-                hintText: '输入英文单词',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _search,
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('添加单词'),
+        backgroundColor: Colors.transparent,
+      ),
+      body: Stack(
+        children: [
+          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
+          const AppBackground(),
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 单词输入
+                TextField(
+                  controller: _wordController,
+                  decoration: InputDecoration(
+                    labelText: '单词',
+                    hintText: '输入英文单词',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _search,
+                    ),
+                  ),
+                  onSubmitted: (_) => _search(),
+                  textInputAction: TextInputAction.search,
                 ),
-              ),
-              onSubmitted: (_) => _search(),
-              textInputAction: TextInputAction.search,
+                const SizedBox(height: 16),
+
+                // 词典匹配结果
+                if (_searched) _buildMatchResult(theme),
+
+                const SizedBox(height: 16),
+
+                // 自定义释义
+                TextField(
+                  controller: _customDefController,
+                  decoration: const InputDecoration(
+                    labelText: '释义',
+                    hintText: '自定义释义（覆盖词典默认释义）',
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+
+                // 备注
+                TextField(
+                  controller: _noteController,
+                  decoration: const InputDecoration(
+                    labelText: '备注',
+                    hintText: '个人记忆笔记、例句等',
+                  ),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+
+                // 标签
+                TextField(
+                  controller: _tagsController,
+                  decoration: const InputDecoration(
+                    labelText: '标签',
+                    hintText: '用逗号分隔，如: 考研, 动词, 易混淆',
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // 收藏（玻璃分组卡）
+                GlassSection(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('收藏'),
+                      value: _isFavorite,
+                      onChanged: (v) => setState(() => _isFavorite = v),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // 保存按钮（tinted glass 主 CTA）
+                GlassButton(
+                  onPressed: _saving ? null : _save,
+                  icon: Icons.add,
+                  label: _saving ? '保存中...' : '添加到词库',
+                  tinted: true,
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-
-            // 词典匹配结果
-            if (_searched) _buildMatchResult(theme),
-
-            const SizedBox(height: 16),
-
-            // 自定义释义
-            TextField(
-              controller: _customDefController,
-              decoration: const InputDecoration(
-                labelText: '释义',
-                hintText: '自定义释义（覆盖词典默认释义）',
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-
-            // 备注
-            TextField(
-              controller: _noteController,
-              decoration: const InputDecoration(
-                labelText: '备注',
-                hintText: '个人记忆笔记、例句等',
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-
-            // 标签
-            TextField(
-              controller: _tagsController,
-              decoration: const InputDecoration(
-                labelText: '标签',
-                hintText: '用逗号分隔，如: 考研, 动词, 易混淆',
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // 收藏
-            SwitchListTile(
-              title: const Text('收藏'),
-              value: _isFavorite,
-              onChanged: (v) => setState(() => _isFavorite = v),
-            ),
-            const SizedBox(height: 24),
-
-            // 保存按钮
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: _saving
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('添加到词库'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildMatchResult(ThemeData theme) {
     if (_matchResult == null) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(Icons.search_off, color: theme.colorScheme.outline),
-              const SizedBox(height: 8),
-              Text('未在词典中找到该单词',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  )),
-              const SizedBox(height: 4),
-              Text('你可以手动填写释义后添加',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                  )),
-            ],
-          ),
+      return GlassContainer(
+        blur: 16,
+        child: Column(
+          children: [
+            Icon(Icons.search_off, color: theme.colorScheme.outline),
+            const SizedBox(height: 8),
+            Text('未在词典中找到该单词',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                )),
+            const SizedBox(height: 4),
+            Text('你可以手动填写释义后添加',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                )),
+          ],
         ),
       );
     }
@@ -240,75 +252,74 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
     final dict = _matchResult!.dictWord;
     final relation = _matchResult!.exchangeRelation;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 4,
-              children: [
+    return GlassContainer(
+      blur: 16,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              Text(
+                dict.word,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (dict.phonetic != null && dict.phonetic!.isNotEmpty)
                 Text(
-                  dict.word,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  '/${dict.phonetic}/',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (dict.phonetic != null && dict.phonetic!.isNotEmpty)
-                  Text(
-                    '/${dict.phonetic}/',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-              ],
+            ],
+          ),
+          if (relation != null) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer
+                    .withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '输入的词是 "${dict.word}" 的$relation',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
             ),
-            if (relation != null) ...[
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '输入的词是 "${dict.word}" 的$relation',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-            ],
-            if (dict.pos != null && dict.pos!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(dict.pos!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontStyle: FontStyle.italic,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  )),
-            ],
-            if (dict.translation != null && dict.translation!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(dict.translation!,
-                  style: theme.textTheme.bodyMedium),
-            ],
-            if (dict.tag != null && dict.tag!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                children: TagUtils.convertTagList(dict.tag)
-                    .map((t) => Chip(
-                          label: Text(t, style: const TextStyle(fontSize: 10)),
-                          visualDensity: VisualDensity.compact,
-                        ))
-                    .toList(),
-              ),
-            ],
           ],
-        ),
+          if (dict.pos != null && dict.pos!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(dict.pos!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  color: theme.colorScheme.onSurfaceVariant,
+                )),
+          ],
+          if (dict.translation != null && dict.translation!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(dict.translation!,
+                style: theme.textTheme.bodyMedium),
+          ],
+          if (dict.tag != null && dict.tag!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 4,
+              children: TagUtils.convertTagList(dict.tag)
+                  .map((t) => Chip(
+                        label: Text(t, style: theme.textTheme.labelSmall),
+                        visualDensity: VisualDensity.compact,
+                      ))
+                  .toList(),
+            ),
+          ],
+        ],
       ),
     );
   }

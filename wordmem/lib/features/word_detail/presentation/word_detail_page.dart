@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/glass.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/utils/string_utils.dart';
 import '../../../domain/models/review_rating.dart';
@@ -11,6 +12,9 @@ import '../../../domain/services/root_matcher.dart';
 import '../../../domain/services/word_root_dict.dart';
 
 /// 单词详情页面
+///
+/// 设计约定（2026-08-30 液体玻璃改版）：aurora 背景 + 玻璃卡（blur 16）；
+/// 收藏星用 AppColors.favorite token；次级文本全走 onSurfaceVariant。
 class WordDetailPage extends ConsumerStatefulWidget {
   final int wordId;
   const WordDetailPage({super.key, required this.wordId});
@@ -297,7 +301,9 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
     final due = word['due'] as String?;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: Text(word['word'] as String),
         actions: [
           if (!_editing)
@@ -312,7 +318,7 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
             ),
           IconButton(
             icon: Icon(isFavorite ? Icons.star : Icons.star_border,
-                color: isFavorite ? Colors.amber : null),
+                color: isFavorite ? AppColors.favorite : null),
             onPressed: () {
               final repo = ref.read(wordRepositoryProvider);
               repo.updateWord(widget.wordId, isFavorite: !isFavorite);
@@ -331,300 +337,295 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
           ),
         ],
       ),
-      body: AdaptiveContent(
-        child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 卡片信息
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 4,
+      body: Stack(
+        children: [
+          // push 页面自带 aurora 背景（MainShell 只包 tab 页）
+          const AppBackground(),
+          AdaptiveContent(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 卡片信息
+                  GlassContainer(
+                    blur: 16,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(word['word'] as String,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            )),
-                        if ((word['sense_id'] as int?) != 0)
-                          Chip(
-                            label: Text('义项 ${word['sense_id']}'),
-                            visualDensity: VisualDensity.compact,
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            Text(word['word'] as String,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                )),
+                            if ((word['sense_id'] as int?) != 0)
+                              Chip(
+                                label: Text('义项 ${word['sense_id']}'),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (_editing) ...[
+                          // 编辑模式
+                          TextField(
+                            controller: _customDefController,
+                            decoration: const InputDecoration(labelText: '释义'),
+                            maxLines: 3,
                           ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _noteController,
+                            decoration: const InputDecoration(labelText: '备注'),
+                            maxLines: 3,
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _tagsController,
+                            decoration: const InputDecoration(labelText: '标签'),
+                          ),
+                        ] else ...[
+                          // 查看模式
+                          if ((word['custom_def'] as String?)?.isNotEmpty == true)
+                            _InfoRow(label: '释义', value: word['custom_def'] as String),
+                          if ((word['note'] as String?)?.isNotEmpty == true)
+                            _InfoRow(label: '备注', value: word['note'] as String),
+                          if ((word['tags'] as String?)?.isNotEmpty == true) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: (word['tags'] as String)
+                                  .split(',')
+                                  .where((t) => t.trim().isNotEmpty)
+                                  .map((t) => Chip(
+                                        label: Text(t.trim(),
+                                            style: theme.textTheme.labelSmall),
+                                        visualDensity: VisualDensity.compact,
+                                        materialTapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ))
+                                  .toList(),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    if (_editing) ...[
-                      // 编辑模式
-                      TextField(
-                        controller: _customDefController,
-                        decoration: const InputDecoration(labelText: '释义'),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _noteController,
-                        decoration: const InputDecoration(labelText: '备注'),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _tagsController,
-                        decoration: const InputDecoration(labelText: '标签'),
-                      ),
-                    ] else ...[
-                      // 查看模式
-                      if ((word['custom_def'] as String?)?.isNotEmpty == true)
-                        _InfoRow(label: '释义', value: word['custom_def'] as String),
-                      if ((word['note'] as String?)?.isNotEmpty == true)
-                        _InfoRow(label: '备注', value: word['note'] as String),
-                      if ((word['tags'] as String?)?.isNotEmpty == true) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: (word['tags'] as String)
-                              .split(',')
-                              .where((t) => t.trim().isNotEmpty)
-                              .map((t) => Chip(
-                                    label: Text(t.trim(),
-                                        style: const TextStyle(fontSize: 11)),
-                                    visualDensity: VisualDensity.compact,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ))
-                              .toList(),
-                        ),
-                      ],
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 近义词
-            if (_synonyms.isNotEmpty) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.hub_outlined,
-                              size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Text('近义词 (${_synonyms.length})',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              )),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: _removeSelfFromSynonymGroup,
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                            child: const Text('移出词林', style: TextStyle(fontSize: 12)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Text('点 × 移除错词',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.4),
-                              )),
-                          const Spacer(),
-                          Text('当前词与整组差异过大可整体移出',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.4),
-                              )),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _synonyms.map((s) {
-                          return InputChip(
-                            label: Text(s['word'] as String),
-                            onPressed: () =>
-                                context.push('/word/${s['id']}'),
-                            onDeleted: () => _blockSynonym(s['word'] as String),
-                            deleteIcon: const Icon(Icons.close, size: 16),
-                          );
-                        }).toList(),
-                      ),
-                    ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
+                  const SizedBox(height: 16),
 
-            // 词根群
-            if (_rootGroups.isNotEmpty) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  // 近义词
+                  if (_synonyms.isNotEmpty) ...[
+                    GlassContainer(
+                      blur: 16,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.spa_outlined,
-                              size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Text('词根群',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              )),
-                          const Spacer(),
-                          Text('点 × 移除错词',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withValues(alpha: 0.4),
-                              )),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      for (final g in _rootGroups) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
+                          Row(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  '${g['root']} · ${g['meaning']}'
-                                  '${(g['meaningEn'] as String? ?? '').isNotEmpty ? ' (${g['meaningEn']})' : ''}',
-                                  style: theme.textTheme.labelMedium?.copyWith(
+                              Icon(Icons.hub_outlined,
+                                  size: 18, color: theme.colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Text('近义词 (${_synonyms.length})',
+                                  style: theme.textTheme.titleSmall?.copyWith(
                                     fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                              // 把当前词从该词根单独移出（不影响其它词根）
+                                  )),
+                              const Spacer(),
                               TextButton(
-                                onPressed: () =>
-                                    _excludeSelfFromRoot(g['root'] as String),
+                                onPressed: _removeSelfFromSynonymGroup,
                                 style: TextButton.styleFrom(
                                   visualDensity: VisualDensity.compact,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
                                 ),
-                                child: const Text('移出此词根',
-                                    style: TextStyle(fontSize: 12)),
+                                child: Text('移出词林',
+                                    style: theme.textTheme.labelMedium),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        if ((g['words'] as List).isEmpty)
-                          Text(
-                            '词库暂无其它同根词',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.4),
-                            ),
-                          )
-                        else
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text('点 × 移除错词',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  )),
+                              const Spacer(),
+                              Text('当前词与整组差异过大可整体移出',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  )),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: (g['words'] as List).map((item) {
-                              final m = item as Map<String, dynamic>;
-                              final w = m['word'] as String;
+                            children: _synonyms.map((s) {
                               return InputChip(
-                                label: Text(w),
-                                onPressed: () => context.push('/word/${m['id']}'),
-                                onDeleted: () => _blockRootWord(w),
-                                deleteIcon:
-                                    const Icon(Icons.close, size: 16),
+                                label: Text(s['word'] as String),
+                                onPressed: () =>
+                                    context.push('/word/${s['id']}'),
+                                onDeleted: () => _blockSynonym(s['word'] as String),
+                                deleteIcon: const Icon(Icons.close, size: 16),
                               );
                             }).toList(),
                           ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // FSRS 状态
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('学习状态',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        )),
-                    const SizedBox(height: 12),
-                    _InfoRow(label: '状态', value: _stateLabel(cardState)),
-                    _InfoRow(label: '复习次数', value: '$reps'),
-                    _InfoRow(label: '遗忘次数', value: '$lapses'),
-                    _InfoRow(
-                        label: '稳定性',
-                      value: stability > 0 ? '${stability.toStringAsFixed(1)} 天' : '-'),
-                    if (due != null)
-                      _InfoRow(
-                        label: '下次复习',
-                        value: StringUtils.formatDue(DateTime.tryParse(due))),
-                    _InfoRow(
-                      label: '添加时间',
-                      value: StringUtils.relativeTime(
-                          DateTime.parse(word['created_at'] as String))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                   ],
-                ),
+
+                  // 词根群
+                  if (_rootGroups.isNotEmpty) ...[
+                    GlassContainer(
+                      blur: 16,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.spa_outlined,
+                                  size: 18, color: theme.colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Text('词根群',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  )),
+                              const Spacer(),
+                              Text('点 × 移除错词',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  )),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          for (final g in _rootGroups) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${g['root']} · ${g['meaning']}'
+                                      '${(g['meaningEn'] as String? ?? '').isNotEmpty ? ' (${g['meaningEn']})' : ''}',
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                                  // 把当前词从该词根单独移出（不影响其它词根）
+                                  TextButton(
+                                    onPressed: () =>
+                                        _excludeSelfFromRoot(g['root'] as String),
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding:
+                                          const EdgeInsets.symmetric(horizontal: 8),
+                                    ),
+                                    child: Text('移出此词根',
+                                        style: theme.textTheme.labelMedium),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            if ((g['words'] as List).isEmpty)
+                              Text(
+                                '词库暂无其它同根词',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              )
+                            else
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: (g['words'] as List).map((item) {
+                                  final m = item as Map<String, dynamic>;
+                                  final w = m['word'] as String;
+                                  return InputChip(
+                                    label: Text(w),
+                                    onPressed: () => context.push('/word/${m['id']}'),
+                                    onDeleted: () => _blockRootWord(w),
+                                    deleteIcon:
+                                        const Icon(Icons.close, size: 16),
+                                  );
+                                }).toList(),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // FSRS 状态
+                  GlassContainer(
+                    blur: 16,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('学习状态',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            )),
+                        const SizedBox(height: 12),
+                        _InfoRow(label: '状态', value: _stateLabel(cardState)),
+                        _InfoRow(label: '复习次数', value: '$reps'),
+                        _InfoRow(label: '遗忘次数', value: '$lapses'),
+                        _InfoRow(
+                            label: '稳定性',
+                          value: stability > 0 ? '${stability.toStringAsFixed(1)} 天' : '-'),
+                        if (due != null)
+                          _InfoRow(
+                            label: '下次复习',
+                            value: StringUtils.formatDue(DateTime.tryParse(due))),
+                        _InfoRow(
+                          label: '添加时间',
+                          value: StringUtils.relativeTime(
+                              DateTime.parse(word['created_at'] as String))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 复习历史
+                  if (_history.isNotEmpty) ...[
+                    Text('复习历史 (${_history.length})',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )),
+                    const SizedBox(height: 8),
+                    ...(_history.take(20).map((h) {
+                      final rating = ReviewRating.fromValue(h['rating'] as int);
+                      return ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          radius: 6,
+                          backgroundColor: switch (rating) {
+                            ReviewRating.again => AppColors.ratingAgain,
+                            ReviewRating.hard => AppColors.ratingHard,
+                            ReviewRating.good => AppColors.ratingGood,
+                            ReviewRating.easy => AppColors.ratingEasy,
+                          },
+                        ),
+                        title: Text(rating.label),
+                        subtitle: Text(StringUtils.relativeTime(
+                            DateTime.parse(h['reviewed_at'] as String))),
+                      );
+                    })),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-
-            // 复习历史
-            if (_history.isNotEmpty) ...[
-              Text('复习历史 (${_history.length})',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  )),
-              const SizedBox(height: 8),
-              ...(_history.take(20).map((h) {
-                final rating = ReviewRating.fromValue(h['rating'] as int);
-                return ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 6,
-                    backgroundColor: switch (rating) {
-                      ReviewRating.again => AppColors.ratingAgain,
-                      ReviewRating.hard => AppColors.ratingHard,
-                      ReviewRating.good => AppColors.ratingGood,
-                      ReviewRating.easy => AppColors.ratingEasy,
-                    },
-                  ),
-                  title: Text(rating.label),
-                  subtitle: Text(StringUtils.relativeTime(
-                      DateTime.parse(h['reviewed_at'] as String))),
-                );
-              })),
-            ],
-          ],
-        ),
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -658,7 +659,7 @@ class _InfoRow extends StatelessWidget {
             width: 72,
             child: Text(label,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  color: theme.colorScheme.onSurfaceVariant,
                 )),
           ),
           Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
