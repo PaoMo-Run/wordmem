@@ -297,6 +297,13 @@ class _ChangelogEntry {
 
 /// 更新日志（新版本在上）
 const List<_ChangelogEntry> _changelog = [
+  _ChangelogEntry('2.0.1', '2026-08-31', [
+    'v3→v11 全 App 视觉与交互重做：iOS 液体玻璃材质（GlassContainer/Button/Section/NavBar）全 App 落地，M3 规范化、teal 品牌种子 #00897B',
+    '5 颗静态 aurora 光斑背景（修复「光斑从来显示不出」顽疾：原光斑尺寸 > 屏宽 + 6 颗重叠糊成平涂，改为小尺寸独立可辨），关闭 Impeller 回退 Skia（红米/HyperOS 兼容），切页换轻量 FadeForwards 450ms',
+    '性能清理：18 个 push 页面 body 删冗余 AppBackground（消除双重渲染），空转 60fps AuroraTickerHost 删除，2 个死代码文件清理，20 个 widget 自动化测试通过',
+    '布局：5 tab 底部 116px 避让悬浮 dock，词库分页改手动下滑加载（overscroll > 60px），今日短文按钮 Row→Wrap 修溢出',
+    '玻璃交互：「开始测试」→「测试」+ GlassButton padding: 0 → horizontal: 18 真因修复（v5 调高度无效的根因）',
+  ]),
   _ChangelogEntry('2.0.0', '2026-08-27', [
     '正式版发布：词典校对 v4 全面生效，词库释义更准确、词性更规范',
     '设置页新增「按新词典刷新词库释义」，旧词库可一键同步新释义',
