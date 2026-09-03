@@ -5,6 +5,7 @@ import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/glass.dart';
+import '../../../shared/widgets/word_play_button.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/utils/string_utils.dart';
 import '../../../domain/models/review_rating.dart';
@@ -360,6 +361,13 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                                 style: theme.textTheme.headlineSmall?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 )),
+                            WordPlayButton(
+                              onPressed: ref.watch(wordAudioEnabledProvider)
+                                  ? () => ref
+                                      .read(pronunciationServiceProvider)
+                                      .speak(word['word'] as String)
+                                  : null,
+                            ),
                             if ((word['sense_id'] as int?) != 0)
                               Chip(
                                 label: Text('义项 ${word['sense_id']}'),

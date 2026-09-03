@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/glass.dart';
+import '../../../../shared/widgets/word_play_button.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/utils/string_utils.dart';
 
@@ -9,7 +10,15 @@ class WordListTile extends StatelessWidget {
   final Map<String, dynamic> word;
   final VoidCallback onTap;
 
-  const WordListTile({super.key, required this.word, required this.onTap});
+  /// 单词发音回调（null = 不显示播放按钮，如开关关闭）。
+  final void Function(String word)? onPlayWord;
+
+  const WordListTile({
+    super.key,
+    required this.word,
+    required this.onTap,
+    this.onPlayWord,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +72,12 @@ class WordListTile extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (onPlayWord != null) ...[
+                        const SizedBox(width: 2),
+                        WordPlayButton(
+                          onPressed: () => onPlayWord!(wordText),
+                        ),
+                      ],
                       if (isFavorite) ...[
                         const SizedBox(width: 6),
                         const Icon(Icons.star,

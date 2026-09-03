@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../domain/models/word_option.dart';
 import '../../../../shared/widgets/glass.dart';
+import '../../../../shared/widgets/word_play_button.dart';
 
 /// 统一的测验卡片组件集合
 ///
@@ -27,6 +28,10 @@ class EnToZhChoiceCard extends StatefulWidget {
   final VoidCallback onSkip;
   final bool isLast;
 
+  /// 单词发音回调（null = 不显示播放按钮，如开关关闭）。
+  /// 题面单词本就可见，题面播放不泄答案。
+  final void Function(String word)? onPlayWord;
+
   const EnToZhChoiceCard({
     super.key,
     required this.word,
@@ -36,6 +41,7 @@ class EnToZhChoiceCard extends StatefulWidget {
     required this.onNext,
     required this.onSkip,
     required this.isLast,
+    this.onPlayWord,
   });
 
   @override
@@ -76,16 +82,30 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            // 英文单词题干（玻璃卡）
+            // 英文单词题干（玻璃卡，题面即可播放发音）
             GlassContainer(
               blur: 0,
               padding: const EdgeInsets.all(20),
-              child: Text(
-                widget.word,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.word,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  if (widget.onPlayWord != null) ...[
+                    const SizedBox(width: 4),
+                    WordPlayButton(
+                      onPressed: () => widget.onPlayWord!(widget.word),
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -207,6 +227,9 @@ class ChooseWordCard extends StatefulWidget {
   final VoidCallback onSkip;
   final bool isLast;
 
+  /// 单词发音回调（null = 不显示）。仅在作答后随正确答案显示，防泄答案。
+  final void Function(String word)? onPlayWord;
+
   const ChooseWordCard({
     super.key,
     required this.word,
@@ -216,6 +239,7 @@ class ChooseWordCard extends StatefulWidget {
     required this.onNext,
     required this.onSkip,
     required this.isLast,
+    this.onPlayWord,
   });
 
   @override
@@ -289,13 +313,25 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
             }),
             if (answered) ...[
               const SizedBox(height: 8),
-              Text(
-                correct ? '回答正确！' : '正确答案：${widget.word}',
-                style: TextStyle(
-                  color: correct ? _goodColor : _againColor,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      correct ? '回答正确！' : '正确答案：${widget.word}',
+                      style: TextStyle(
+                        color: correct ? _goodColor : _againColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  if (widget.onPlayWord != null)
+                    WordPlayButton(
+                      onPressed: () => widget.onPlayWord!(widget.word),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               GlassButton(
@@ -393,6 +429,9 @@ class DictationCard extends StatefulWidget {
   final VoidCallback onSkip;
   final bool isLast;
 
+  /// 单词发音回调（null = 不显示）。仅在作答后随正确答案显示，防泄答案。
+  final void Function(String word)? onPlayWord;
+
   const DictationCard({
     super.key,
     required this.word,
@@ -402,6 +441,7 @@ class DictationCard extends StatefulWidget {
     required this.onNext,
     required this.onSkip,
     required this.isLast,
+    this.onPlayWord,
   });
 
   @override
@@ -529,13 +569,25 @@ class _DictationCardState extends State<DictationCard> {
             ),
             const SizedBox(height: 16),
             if (_answered) ...[
-              Text(
-                _correct ? '正确！' : '正确答案：${widget.word}',
-                style: TextStyle(
-                  color: _correct ? _goodColor : _againColor,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _correct ? '正确！' : '正确答案：${widget.word}',
+                      style: TextStyle(
+                        color: _correct ? _goodColor : _againColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  if (widget.onPlayWord != null)
+                    WordPlayButton(
+                      onPressed: () => widget.onPlayWord!(widget.word),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               GlassButton(

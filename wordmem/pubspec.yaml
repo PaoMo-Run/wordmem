@@ -1,7 +1,7 @@
 name: wordmem
 description: "词记 - 离线英语词库与间隔复习 App"
 publish_to: 'none'
-version: 2.0.1+17
+version: 2.1.1+19
 
 environment:
   sdk: ^3.6.0
@@ -33,6 +33,10 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   url_launcher: ^6.3.1
   package_info_plus: ^8.0.2
+
+  # Audio (word pronunciation: local mp3 cache playback + system TTS fallback)
+  audioplayers: ^6.1.0
+  flutter_tts: ^4.2.0
 
 dev_dependencies:
   flutter_test:

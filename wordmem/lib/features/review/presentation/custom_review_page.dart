@@ -203,10 +203,12 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   }
 
   // 英译汉（选择题，自选复习不更新 FSRS，仅统计记住与否）
+  // 注意：此处仅计数，不前进——前进由卡片「下一题」/「跳过」触发，
+  // 保证作答后答案反馈能正常展示（若在此前进，卡片因 ValueKey 变化
+  // 被重建，内部反馈态丢失，表现为跳过答案直接进入下一题）。
   void _enToZhAnswered(bool correct) {
     if (correct) _enToZhCorrect++;
     _enToZhAnsweredCount++;
-    _advanceEnToZh();
   }
 
   void _advanceEnToZh() {
@@ -387,6 +389,7 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   Widget _buildQuiz() {
     final total = _queue.length;
     final progress = _index / total;
+    final audioEnabled = ref.watch(wordAudioEnabledProvider);
 
     final Widget card;
     final String title;
@@ -402,6 +405,9 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           onNext: _advanceEnToZh,
           onSkip: _advanceEnToZh,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
       case _QuizStage.chooseWord:
         title = '选单词 ${_index + 1} / $total';
@@ -414,6 +420,9 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           onNext: _advanceChoose,
           onSkip: _advanceChoose,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
       case _QuizStage.dictation:
         title = '默写 ${_index + 1} / $total';
@@ -426,6 +435,9 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           onNext: _advanceDictation,
           onSkip: _advanceDictation,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
     }
 

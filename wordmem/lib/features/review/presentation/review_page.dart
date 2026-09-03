@@ -299,6 +299,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   Widget _buildQuiz() {
     final total = _queue.length;
     final progress = _index / total;
+    final audioEnabled = ref.watch(wordAudioEnabledProvider);
 
     final Widget card;
     final String title;
@@ -314,6 +315,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
           onNext: _advanceFromEnToZh,
           onSkip: _advanceFromEnToZh,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
       case _Stage.chooseWord:
         title = '选单词 ${_index + 1} / $total';
@@ -326,6 +330,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
           onNext: _advanceFromChoose,
           onSkip: _advanceFromChoose,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
       case _Stage.dictation:
         title = '默写 ${_index + 1} / $total';
@@ -338,6 +345,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
           onNext: _advanceFromDictation,
           onSkip: _advanceFromDictation,
           isLast: _index == total - 1,
+          onPlayWord: audioEnabled
+              ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+              : null,
         );
       case _Stage.done:
         title = '';

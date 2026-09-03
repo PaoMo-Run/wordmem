@@ -20,6 +20,9 @@ class LibraryPage extends ConsumerStatefulWidget {
 }
 
 class _LibraryPageState extends ConsumerState<LibraryPage> {
+  /// 底部弹性拉伸超过这个幅度（逻辑像素 ≈ 1cm）才触发加载下一批
+  static const double _kPullToLoadThreshold = 80;
+
   final _searchController = TextEditingController();
   String _searchQuery = '';
   /// 当前搜索范围（我的词库 / 词典）
@@ -284,17 +287,33 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       );
     }
     final hasMore = _words.length < _total;
-    return NotificationListener<OverscrollNotification>(
-      // 滑到底后「停顿 + 大幅下滑」才加载下一批 50 个（避免贴边小动作误触）。
-      // 阈值 60px ≈ 1cm 下拉：必须明确「停顿 → 继续向下拽过底部 60px」才触发。
+    return NotificationListener<ScrollNotification>(
+      // 滑到底后「继续下拉 → 弹性拉伸」超过限度才加载下一批 50 个。
+      //
+      // 【易错点 · 务必记住】不要用 OverscrollNotification.overscroll 做阈值：
+      // 在 ClampingScrollPhysics（Android 默认）下，它每帧派发的是「被边界 clamp 掉的
+      // 像素增量」——慢慢拉时单帧增量极小、累积不起来，只有快速甩动(fling)才产生
+      // 瞬时大值。所以那个实现实际测的是「速度」而不是「幅度」，导致用户必须
+      // "飞快下滑"才能触发，与需求相反。
+      //
+      // 正确做法：列表改用 BouncingScrollPhysics → 到底后继续拉时 pixels 会**真实超出**
+      // maxScrollExtent（内容跟手位移，产生用户可见的橡皮筋弹性），此时
+      // (pixels - maxScrollExtent) 就是「拉过头的幅度」，与速度无关。
+      // 小幅度下拉 = 只看到弹性回弹；超过 80px 限度才触发加载。
       onNotification: (notification) {
-        if (notification.overscroll > 60) {
-          _loadMore();
+        if (notification is ScrollUpdateNotification) {
+          final m = notification.metrics;
+          final pulled = m.pixels - m.maxScrollExtent; // 拉过头的幅度
+          if (pulled > _kPullToLoadThreshold && !_loading && hasMore) {
+            _loadMore();
+          }
         }
         return false;
       },
       child: ListView.builder(
         controller: _scrollController,
+        // 弹性物理：滑到底后继续下拉能"拉过头"，产生橡皮筋动画（可见的弹性限度）
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         // 显式 padding 需自行避让悬浮 dock 底部（≈116）
         padding: const EdgeInsets.fromLTRB(0, 0, 0, 116),
         itemCount: _words.length + 1,
@@ -306,20 +325,23 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           return WordListTile(
             word: word,
             onTap: () => context.push('/word/${word['id']}'),
+            onPlayWord: ref.watch(wordAudioEnabledProvider)
+                ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+                : null,
           );
         },
       ),
     );
   }
 
-  /// 列表尾部状态：加载中 / 继续下滑加载更多 / 已全部加载
+  /// 列表尾部状态：加载中 / 下拉加载更多 / 已全部加载
   Widget _buildLoadMoreFooter(bool hasMore) {
     final theme = Theme.of(context);
     final String text;
     if (_loading) {
       text = '加载中…';
     } else if (hasMore) {
-      text = '继续大幅下滑加载更多（已 ${_words.length}/$_total）';
+      text = '下拉加载更多（已 ${_words.length}/$_total）';
     } else {
       text = '已加载全部 $_total 个单词';
     }

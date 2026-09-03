@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -18,9 +23,13 @@ import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/import_repository.dart';
 import '../../data/repositories/story_repository.dart';
 import '../../domain/services/fsrs_service.dart';
+import '../../domain/services/pronunciation_service.dart';
+import '../../domain/services/tts_cache_store.dart';
 import '../../domain/services/learning_context_builder.dart';
 import '../../domain/services/ai_story_service.dart';
 import '../../domain/services/story_quiz_engine.dart';
+import '../../infra/audio/audio_file_player.dart';
+import '../../infra/audio/tts_player.dart';
 import '../../infra/notification_service.dart';
 import '../../infra/ai/ai_config.dart';
 import '../../infra/ai/ai_config_store.dart';
@@ -425,3 +434,86 @@ final storyQuizDaoProvider = Provider<StoryQuizDao>((ref) {
 final storyQuizEngineProvider = Provider<StoryQuizEngine>((ref) {
   return StoryQuizEngine();
 });
+
+// ============================================================
+// 单词发音 Providers
+// ============================================================
+
+/// TTS 本地缓存存储（目录来自应用文档目录，持久化）
+final ttsCacheStoreProvider = FutureProvider<TtsCacheStore>((ref) async {
+  final dir = await getApplicationDocumentsDirectory();
+  return TtsCacheStore(cacheDir: p.join(dir.path, 'tts_cache'));
+});
+
+/// 本地音频文件播放器（单例，Provider 销毁时释放）
+final audioFilePlayerProvider = Provider<AudioFilePlayer>((ref) {
+  final player = AudioPlayersFilePlayer();
+  ref.onDispose(player.dispose);
+  return player;
+});
+
+/// 系统 TTS 播放器（懒初始化，Provider 销毁时释放）
+final ttsPlayerProvider = Provider<TtsPlayer>((ref) {
+  final player = FlutterTtsPlayer();
+  ref.onDispose(player.dispose);
+  return player;
+});
+
+/// 发音级联服务：本地缓存 → 有道 → 百度 → 系统 TTS
+final pronunciationServiceProvider = Provider<PronunciationService>((ref) {
+  final cache = ref.watch(ttsCacheStoreProvider).maybeWhen(
+        data: (c) => c,
+        orElse: () => null,
+      );
+  return PronunciationCascade(
+    cache: cache ?? _VoidTtsCacheStore(),
+    client: http.Client(),
+    filePlayer: ref.watch(audioFilePlayerProvider),
+    ttsPlayer: ref.watch(ttsPlayerProvider),
+  );
+});
+
+/// 单词发音开关（默认开启，持久化到 SharedPreferences）
+final wordAudioEnabledProvider =
+    StateNotifierProvider<WordAudioEnabledNotifier, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).maybeWhen(
+        data: (p) => p,
+        orElse: () => null,
+      );
+  return WordAudioEnabledNotifier(prefs);
+});
+
+class WordAudioEnabledNotifier extends StateNotifier<bool> {
+  final SharedPreferences? _prefs;
+  WordAudioEnabledNotifier(this._prefs)
+      : super(_prefs?.getBool(AppConstants.keyWordAudioEnabled) ?? true);
+
+  void set(bool value) {
+    state = value;
+    _prefs?.setBool(AppConstants.keyWordAudioEnabled, value);
+  }
+}
+
+/// 缓存目录未就绪时的退化实现：get 恒 null（走在线源），
+/// put 写系统临时文件（本次可播，不持久缓存）。
+class _VoidTtsCacheStore implements TtsCacheStore {
+  @override
+  File? get(String word) => null;
+
+  @override
+  Future<File> put(String word, List<int> bytes) async {
+    final tmp = await Directory.systemTemp.createTemp('tts_fallback');
+    final f = File(p.join(tmp.path, 'audio.mp3'));
+    await f.writeAsBytes(bytes, flush: true);
+    return f;
+  }
+
+  @override
+  Future<void> trim({int maxBytes = TtsCacheStore.defaultMaxBytes}) async {}
+
+  @override
+  Directory get directory => Directory.systemTemp;
+
+  @override
+  String fileName(String word) => '';
+}

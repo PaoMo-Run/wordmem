@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../domain/models/word.dart';
 import '../../../../shared/providers/app_providers.dart';
+import '../../../../shared/widgets/word_play_button.dart';
 
 /// 可点词释义的短文正文。
 ///
@@ -93,7 +94,19 @@ class StoryTappableText extends ConsumerWidget {
 
     showDialog<void>(
       context: context,
-      builder: (ctx) => _WordCardDialog(word: word, entry: entry, isHighlight: isHighlight),
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final enabled = ref.watch(wordAudioEnabledProvider);
+          return _WordCardDialog(
+            word: word,
+            entry: entry,
+            isHighlight: isHighlight,
+            onPlayWord: enabled
+                ? (w) => ref.read(pronunciationServiceProvider).speak(w)
+                : null,
+          );
+        },
+      ),
     );
   }
 }
@@ -103,10 +116,14 @@ class _WordCardDialog extends StatelessWidget {
   final DictWord entry;
   final bool isHighlight;
 
+  /// 单词发音回调（null = 不显示播放按钮，如开关关闭）。
+  final void Function(String word)? onPlayWord;
+
   const _WordCardDialog({
     required this.word,
     required this.entry,
     required this.isHighlight,
+    this.onPlayWord,
   });
 
   @override
@@ -125,6 +142,12 @@ class _WordCardDialog extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
+          if (onPlayWord != null) ...[
+            const SizedBox(width: 4),
+            WordPlayButton(
+              onPressed: () => onPlayWord!(entry.word),
+            ),
+          ],
           if (isHighlight)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

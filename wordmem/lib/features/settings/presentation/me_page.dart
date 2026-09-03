@@ -51,6 +51,7 @@ class _MePageState extends ConsumerState<MePage> {
     final reminderEnabled = ref.watch(reminderEnabledProvider);
     final reminderHour = ref.watch(reminderHourProvider);
     final reminderMinute = ref.watch(reminderMinuteProvider);
+    final wordAudioEnabled = ref.watch(wordAudioEnabledProvider);
     // 词库版本变化时刷新统计
     ref.listen(wordListVersionProvider, (_, __) => _loadStats());
 
@@ -65,70 +66,79 @@ class _MePageState extends ConsumerState<MePage> {
         // 显式 padding 需自行避让悬浮 dock 底部（≈116）
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 116),
         children: [
-          // 个人概览（静态玻璃卡）
+          // 我的学习（概览 + 学习统计 + 词典信息 合并为一栏）
+          //
+          // 修复：原先顶部「我的学习」卡带 chevron_right 箭头却**没接 onTap**
+          //（视觉暗示可点、点击无任何响应），而真正的「学习统计 / 词典信息」
+          // 却在下方另一个「学习」栏里——入口与内容割裂。
+          // 现合并为一栏：概览行（纯展示，已移除误导箭头）+ 两个学习入口。
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: GlassContainer(
               blur: 0,
               elevated: false,
               radius: 14,
-              child: Row(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text('词',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                            color: theme.colorScheme.onPrimary,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // 概览行：纯展示，不可点（无箭头）
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    child: Row(
                       children: [
-                        Text('我的学习',
-                            style: theme.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 3),
-                        Text(
-                          '连续 $_streak 天 · 已收录 $_totalWords 词 · 已掌握 $_mastered',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text('词',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('我的学习',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 3),
+                              Text(
+                                '连续 $_streak 天 · 已收录 $_totalWords 词 · 已掌握 $_mastered',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                    color:
+                                        theme.colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  // 学习统计
+                  ListTile(
+                    leading: const Icon(Icons.bar_chart_outlined),
+                    title: const Text('学习统计'),
+                    subtitle: const Text('学习曲线 / 掌握分布'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/stats'),
+                  ),
+                  // 词典信息（唯一内置：专业版）
+                  const ListTile(
+                    leading: Icon(Icons.menu_book_outlined),
+                    title: Text('词典信息'),
+                    subtitle: Text('专业版（15529 词 · 含航空专业词）'),
+                  ),
                 ],
               ),
             ),
-          ),
-
-          // 学习
-          const _SectionHeader('学习'),
-          GlassSection(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.bar_chart_outlined),
-                title: const Text('学习统计'),
-                subtitle: const Text('学习曲线 / 掌握分布'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/stats'),
-              ),
-              // 词典信息（唯一内置：专业版）
-              const ListTile(
-                leading: Icon(Icons.menu_book_outlined),
-                title: Text('词典信息'),
-                subtitle: Text('专业版（15529 词 · 含航空专业词）'),
-              ),
-            ],
           ),
 
           // 偏好
@@ -207,6 +217,14 @@ class _MePageState extends ConsumerState<MePage> {
                     ),
                   ),
                 ),
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_up_outlined),
+                title: const Text('单词发音'),
+                subtitle: const Text('点击单词旁的喇叭播放发音'),
+                value: wordAudioEnabled,
+                onChanged: (v) =>
+                    ref.read(wordAudioEnabledProvider.notifier).set(v),
+              ),
               ListTile(
                 leading: const Icon(Icons.palette_outlined),
                 title: const Text('主题模式'),
