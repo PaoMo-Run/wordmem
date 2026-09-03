@@ -6,8 +6,8 @@
 
 ## 下载与当前版本
 
-- **最新版**：**v2.0.0+16**（2026-08-27 正式发布）
-- **安装包**：[GitHub Releases](https://github.com/PaoMo-Run/wordmem/releases) 下载 `wordmem-v2.0.0-release.apk`（正式签名，65.2MB）
+- **最新版**：**v2.1.2+20**（2026-09-03 打包，含词典 v5：pro_av 航空标签净化 490→423，67 个通用词脱航并完成义项校对）
+- **安装包**：`wordmem-v2.1.2-release.apk`（正式签名，65.5MB，本地归档于 `2.0发行准备/`；GitHub Releases 分发待推送）
 - **平台**：Android（minSdk 26 / targetSdk 34 / compileSdk 36）
 - **定位**：离线优先。词库/复习/统计/备份全部本地存储；仅 AI 功能（短文生成 / AI 陪练）在主动使用时联网（`INTERNET` 权限仅为此声明）
 
