@@ -1,7 +1,7 @@
 name: wordmem
-description: "词记 - 离线英语词库与间隔复习 App"
+description: "词记 - 可离线运行的英语记单词 App（FSRS 间隔复习）"
 publish_to: 'none'
-version: 2.1.2+20
+version: 2.1.3+21
 
 environment:
   sdk: ^3.6.0
@@ -28,6 +28,8 @@ dependencies:
   path_provider: ^2.1.5
   archive: ^3.6.1
   crypto: ^3.0.6
+  xml: ^7.0.1 # sync: PROPFIND 响应自解析（webdav_client_plus readDir 有双重 decode bug，见 Task 0 实测记录）
+  webdav_client_plus: ^2.0.0 # sync: WebDAV 客户端（只允许在 lib/infra/sync/ 内引用）
   shared_preferences: ^2.3.5
   http: ^1.6.0
   flutter_secure_storage: ^10.3.1

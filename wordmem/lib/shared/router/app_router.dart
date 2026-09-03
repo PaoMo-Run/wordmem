@@ -16,6 +16,7 @@ import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/me_page.dart';
 import '../../features/settings/presentation/about_page.dart';
 import '../../features/settings/presentation/ai_config_page.dart';
+import '../../features/settings/presentation/sync_page.dart';
 import '../../features/add_word/presentation/add_word_page.dart';
 import '../../features/add_word/presentation/text_import_page.dart';
 import '../../features/today/presentation/today_quick_actions_editor_page.dart';
@@ -143,6 +144,11 @@ final appRouter = GoRouter(
       path: '/ai-config',
       name: 'aiConfig',
       builder: (context, state) => const AiConfigPage(),
+    ),
+    GoRoute(
+      path: '/network-sync',
+      name: 'networkSync',
+      builder: (context, state) => const SyncPage(),
     ),
     GoRoute(
       path: '/word-group-memory',

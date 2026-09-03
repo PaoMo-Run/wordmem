@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -22,6 +23,7 @@ import '../../data/repositories/review_repository.dart';
 import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/import_repository.dart';
 import '../../data/repositories/story_repository.dart';
+import '../../data/repositories/sync_repository.dart';
 import '../../domain/services/fsrs_service.dart';
 import '../../domain/services/pronunciation_service.dart';
 import '../../domain/services/tts_cache_store.dart';
@@ -517,3 +519,42 @@ class _VoidTtsCacheStore implements TtsCacheStore {
   @override
   String fileName(String word) => '';
 }
+
+// ============================================================
+// 从网络同步 Provider（v2.1.3，施工文档 §3.5）
+// ============================================================
+
+/// secure_storage 键值抽象的正式实现（§3.3：水位/凭据只进安全存储）
+class SecureSyncSettingsStore implements SyncSettingsStore {
+  final FlutterSecureStorage _storage;
+  SecureSyncSettingsStore(this._storage);
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: key);
+
+  @override
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
+}
+
+final syncSettingsStoreProvider = Provider<SyncSettingsStore>((ref) {
+  return SecureSyncSettingsStore(const FlutterSecureStorage());
+});
+
+/// 本机 review_logs 统计（§3.6 两条 SQL，走已就绪的数据库）
+final syncLocalStatsProvider = Provider<SyncLocalStats>((ref) {
+  final db = ref.watch(databaseProvider).maybeWhen(
+        data: (d) => d,
+        orElse: () => throw StateError('Database not ready'),
+      );
+  return DbSyncLocalStats(db);
+});
+
+/// 备份出入口（复用 backup_repository 管线，不重写）
+final syncBackupGatewayProvider = Provider<SyncBackupGateway>((ref) {
+  return BackupRepositoryGateway(ref.watch(backupRepositoryProvider));
+});
+
+/// WebDAV 存储实例依赖运行时配置（secure_storage 里的 url/user/password），
+/// 由 sync_page 读出配置后自行构造 SyncRepository——不注册全局 storageProvider。
+

@@ -365,13 +365,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     leading: Icon(Icons.info_outline),
                     title: Text('词记'),
                     subtitle:
-                        Text('版本 ${AppConstants.appVersion}\n离线英语词库与间隔复习'),
+                        Text('版本 ${AppConstants.appVersion}\n可离线运行的记单词 App'),
                   ),
                   ListTile(
                     leading: Icon(Icons.shield_outlined),
                     title: Text('隐私'),
                     subtitle: Text(
-                        '学习数据默认仅存本机；仅当你主动使用 AI 功能时，当日学习数据才会发送给所选 AI 服务商。'),
+                        '学习数据默认仅存本机；仅当你主动使用联网功能（AI、单词发音、从网络同步）时，相关数据才会按功能说明发送。'),
                   ),
                   // 过时文案修正：算法为 FSRS（非艾宾浩斯固定间隔）
                   ListTile(

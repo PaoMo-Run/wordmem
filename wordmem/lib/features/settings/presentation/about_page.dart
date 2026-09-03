@@ -117,7 +117,7 @@ class _AboutPageState extends State<AboutPage> {
                           style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 4),
-                      Text('离线英语词库 · FSRS 间隔复习',
+                      Text('可离线运行的记单词 App · FSRS 间隔复习',
                           style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 4),
@@ -245,16 +245,18 @@ class _AboutPageState extends State<AboutPage> {
 
   static const String _privacyText = '''
 一、数据存储
-1. 词记（WordMem）是一款离线优先的词汇学习应用。你的词库、复习记录、学习统计等全部数据默认仅存储在你的设备本地（SQLite 数据库），不会上传到任何服务器。
-2. API Key 等敏感配置使用系统安全存储（Android Keystore）加密保存，仅在本机使用。
+1. 词记（WordMem）是一款可离线运行的记单词应用。核心功能（词库、复习、学习统计）完全离线可用，你的词库、复习记录、学习统计等数据默认仅存储在你的设备本地（SQLite 数据库），不会上传到任何服务器。
+2. API Key、网盘账号与应用密码等敏感配置使用系统安全存储（Android Keystore）加密保存，仅在本机使用。
 
-二、AI 功能与数据传输
+二、联网功能与数据传输
 1. 仅当你主动使用「今日短文」「AI 陪练」等 AI 功能时，当日所选的学习数据（今日所学单词、掌握状态等）才会发送给你所选的服务商（如 DeepSeek、智谱、Kimi、通义千问、豆包、OpenAI 兼容服务、内置 Agens 免费服务等）用于生成内容。
 2. 若你未配置自己的 API，应用默认使用内置的 Agens 免费服务；该服务为第三方免费额度，可能因用量限制而暂停，你可在「我的 - AI 服务」中随时更换为其他服务商。
-3. 除上述 AI 功能外，应用不会在后台收集或上传任何个人数据。
+3. 单词发音：仅当你点击喇叭按钮时，应用会将该单词的拼写文本发送给在线音源（有道、百度）获取发音音频，并在本地缓存供离线复用；此过程不发送其他任何数据。
+4. 从网络同步：仅当你主动使用「从网络同步」时，应用才会通过 WebDAV 将你的备份（词库、复习记录等）上传到你自行配置的个人网盘（如坚果云），或从该网盘下载恢复；网盘账号与应用密码仅保存在你的设备上，不会包含在备份文件中。
+5. 除上述功能外，应用不会在后台收集或上传任何个人数据。
 
 三、第三方服务
-1. 应用内置开源词典数据（ECDICT 系）与公开词根词缀资料，仅用于离线查询。
+1. 应用内置开源词典数据（ECDICT 系）与公开词根词缀资料，仅用于本地查询。
 2. 应用不含广告 SDK 与第三方统计 SDK。
 
 四、你的权利
@@ -263,7 +265,7 @@ class _AboutPageState extends State<AboutPage> {
 五、联系我们
 如对本政策有疑问，可通过 GitHub 项目地址（Issues）与我们联系。
 
-更新日期：2026-08-20''';
+更新日期：2026-09-03''';
 }
 
 /// 区块标题（与 settings_page / me_page 同款）
@@ -297,6 +299,10 @@ class _ChangelogEntry {
 
 /// 更新日志（新版本在上，仅保留最近 4 次）
 const List<_ChangelogEntry> _changelog = [
+  _ChangelogEntry('2.1.3', '2026-09-03', [
+    '产品定性更正：完全离线 App → 可离线运行的记单词 App——核心功能（词库、复习、统计）离线可用，单词发音、AI、云端同步为可选联网增强，隐私政策同步更新',
+    '新增「从网络同步」（我的-数据）：通过 WebDAV（支持坚果云）手动上传 / 下载备份快照，云端保留最近 10 份本机快照；换设备学习用「旧设备先上传 → 新设备再下载」接力',
+  ]),
   _ChangelogEntry('2.1.2', '2026-09-03', [
     '词典升级 v5：「航空专业词」标签净化——67 个通用词（primary/captain/right/control 等）移除航空标签，新添加的航空词不再混入通用词',
     '上述 67 词释义同步精简校对（主导词性单一化、义项 ≤4，与 v4 校对规则一致）',
@@ -313,11 +319,5 @@ const List<_ChangelogEntry> _changelog = [
     '性能清理：18 个 push 页面 body 删冗余 AppBackground（消除双重渲染），空转 60fps AuroraTickerHost 删除，2 个死代码文件清理，20 个 widget 自动化测试通过',
     '布局：5 tab 底部 116px 避让悬浮 dock，词库分页改手动下滑加载（overscroll > 60px），今日短文按钮 Row→Wrap 修溢出',
     '玻璃交互：「开始测试」→「测试」+ GlassButton padding: 0 → horizontal: 18 真因修复（v5 调高度无效的根因）',
-  ]),
-  _ChangelogEntry('2.0.0', '2026-08-27', [
-    '正式版发布：词典校对 v4 全面生效，词库释义更准确、词性更规范',
-    '设置页新增「按新词典刷新词库释义」，旧词库可一键同步新释义',
-    '修复短文页、词群记忆页在部分场景下的闪退问题',
-    '更新日志新增完整版本记录，安装包改为 GitHub Releases 分发',
   ]),
 ];

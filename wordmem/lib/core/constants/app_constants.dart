@@ -6,7 +6,7 @@ class AppConstants {
   static const String appNameEn = 'WordMem';
 
   /// 应用版本号（与 pubspec.yaml 保持一致，用于"关于"页展示）
-  static const String appVersion = '2.1.2';
+  static const String appVersion = '2.1.3';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。

@@ -354,6 +354,13 @@ class _MePageState extends ConsumerState<MePage> {
                   }
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.sync_outlined),
+                title: const Text('从网络同步'),
+                subtitle: const Text('通过 WebDAV 上传 / 下载数据（支持坚果云）'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/network-sync'),
+              ),
             ],
           ),
 

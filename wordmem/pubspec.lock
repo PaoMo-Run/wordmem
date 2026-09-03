@@ -121,6 +121,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.19.1"
+  convert:
+    dependency: transitive
+    description:
+      name: convert
+      sha256: b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "3.1.2"
   cross_file:
     dependency: transitive
     description:
@@ -141,10 +149,26 @@ packages:
     dependency: transitive
     description:
       name: dbus
-      sha256: "0ce9b0a839e6dee59a37a623d2fc26a35bbbe6404213e419b0d6411023d62645"
+      sha256: a48d5da28e89bd02196e80d81ed8d7954923d00a0f4a68cc20b575038f023383
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "0.7.14"
+    version: "0.7.15"
+  dio:
+    dependency: transitive
+    description:
+      name: dio
+      sha256: "0df44ebba85e503958eb75d07eedd3c86275a58c1d3eda2f2ce8f0a2c3abbb3c"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "5.11.0"
+  dio_web_adapter:
+    dependency: transitive
+    description:
+      name: dio_web_adapter
+      sha256: "0786d0b7295a373de356fc0af4f6f1d0ab2844ed31b19dfc5e7556b70e24212c"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.2.1"
   fake_async:
     dependency: transitive
     description:
@@ -424,6 +448,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.18.0"
+  mime:
+    dependency: transitive
+    description:
+      name: mime
+      sha256: bd47de35f07e27267e69c8c8b22edf9473bfee170a60d60fcc93730c5144b7f6
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.1.0"
   objective_c:
     dependency: transitive
     description:
@@ -813,6 +845,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.1.1"
+  webdav_client_plus:
+    dependency: "direct main"
+    description:
+      name: webdav_client_plus
+      sha256: "1ac25cf8cc5810f77201e176fcdf53312386711be62eb6f49cf975490a172ced"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.0.0"
   win32:
     dependency: transitive
     description:
@@ -830,13 +870,13 @@ packages:
     source: hosted
     version: "1.1.0"
   xml:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: xml
-      sha256: "971043b3a0d3da28727e40ed3e0b5d18b742fa5a68665cca88e74b7876d5e025"
+      sha256: "67f0aff7be013d107995e9b75bf4e7f2c3ef2dfdb2c8e68024bba0a7fd5756a4"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "6.6.1"
+    version: "7.0.1"
   yaml:
     dependency: transitive
     description:
