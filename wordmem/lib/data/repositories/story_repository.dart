@@ -76,6 +76,32 @@ class StoryRepository {
     return ai.generate(words, title: title);
   }
 
+  /// 流式生成短文（v2.1.4）：yield 累积的原始输出，结束后用 [parseAiStory] 解析。
+  /// [words] 应先经 [limitWords] 截断，与解析时传同一集合。
+  Stream<String> generateStream(
+    List<StoryWord> words, {
+    String? title,
+  }) {
+    final ai = _aiService;
+    if (ai == null) {
+      throw const AiException(AiErrorType.notConfigured,
+          'AI 未配置，请先在「设置 - AI 服务」中配置，或使用剪贴板中转生成');
+    }
+    return ai.generateStream(words, title: title);
+  }
+
+  /// 流式路径：与 [generateStream] 配套的单词截断与原始输出解析
+  List<StoryWord> limitWords(List<StoryWord> words) =>
+      _aiService?.limitWords(words) ?? words;
+
+  Story parseAiStory(String raw, List<StoryWord> words) {
+    final ai = _aiService;
+    if (ai == null) {
+      throw const AiException(AiErrorType.notConfigured, 'AI 未配置');
+    }
+    return ai.parseStory(raw, words);
+  }
+
   /// 构建「剪贴板中转」提示词：用户复制到其它 AI App，生成后粘贴回来
   String buildClipboardPrompt(List<StoryWord> words, {String? title}) {
     final buf = StringBuffer();

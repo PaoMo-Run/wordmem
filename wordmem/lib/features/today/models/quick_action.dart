@@ -69,6 +69,12 @@ const List<QuickAction> kAllQuickActions = [
       label: '学习统计',
       route: '/stats',
       color: AppColors.quickStats),
+  QuickAction(
+      id: 'network_sync',
+      icon: Icons.sync_outlined,
+      label: '进度同步',
+      route: '/network-sync',
+      color: AppColors.quickSync),
 ];
 
 /// 默认布局（首次启动无配置时使用）
@@ -79,8 +85,8 @@ const List<String> kDefaultQuickActionIds = [
   'custom_review',
 ];
 
-/// 上限
-const int kMaxQuickActions = 8;
+/// 上限（v2.1.4：8 → 9，新增"进度同步"入口）
+const int kMaxQuickActions = 9;
 
 /// 按 id 取动作定义
 QuickAction quickActionById(String id) =>

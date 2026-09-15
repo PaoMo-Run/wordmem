@@ -409,7 +409,8 @@ class SyncRepository {
           SyncSettingKeys.watermarkStats,
           jsonEncode(SyncStats(reviewLogs: restoredCount).toJson()));
 
-      final when = entry.uploadedTime;
+      // v2.1.5：与快照列表一致，按设备本地时区（北京时间）展示
+      final when = entry.uploadedTime?.toLocal();
       final whenText = when != null
           ? '${when.year}-${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')}'
               ' ${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}'
@@ -426,9 +427,16 @@ class SyncRepository {
 
   /// 高级区快照列表（时间倒序）。manifest 缺失时按目录 listing 临时推导
   /// （不写回），条目缺 sha256/stats（降级态）由 UI 显示"信息有限"。
+  /// v2.1.5：manifest 命中分支也强制按时间倒序（manifest 是追加写，
+  /// 旧实现直接返回写入顺序导致最旧在最上）。
   Future<List<SnapshotEntry>> remoteSnapshots() async {
     final manifest = await fetchManifest();
-    if (manifest != null) return manifest.snapshots;
+    if (manifest != null) {
+      final sorted = [...manifest.snapshots]
+        ..sort((a, b) => (b.uploadedTime ?? DateTime.utc(0))
+            .compareTo(a.uploadedTime ?? DateTime.utc(0)));
+      return sorted;
+    }
     final files = await storage.list(remoteDir);
     final re = RegExp(_namePattern);
     final entries = <SnapshotEntry>[];
@@ -443,6 +451,38 @@ class SyncRepository {
     entries.sort((a, b) => (b.uploadedTime ?? DateTime.utc(0))
         .compareTo(a.uploadedTime ?? DateTime.utc(0)));
     return entries;
+  }
+
+  /// 删除云端快照（v2.1.5）：先删 zip，再尽力更新 manifest（移除条目）。
+  /// manifest 更新失败不阻断——zip 已删，旧条目在列表中会呈"信息有限"态，
+  /// 恢复时会因 404 失败，可再次删除清理。
+  Future<SyncOpResult> deleteSnapshot(String name) async {
+    try {
+      await storage.delete('$remoteDir/$name');
+      final manifest = await fetchManifest();
+      if (manifest != null) {
+        final remaining = manifest.snapshots
+            .where((s) => s.name != name)
+            .toList()
+          ..sort((a, b) => (b.uploadedTime ?? DateTime.utc(0))
+              .compareTo(a.uploadedTime ?? DateTime.utc(0)));
+        final updated = SyncManifest(
+          snapshots: remaining,
+          latest: remaining.isNotEmpty ? remaining.first.name : null,
+        );
+        try {
+          await storage.write(_manifestPath,
+              Uint8List.fromList(utf8.encode(updated.toJsonString())));
+        } on SyncStorageException {
+          // 尽力而为：zip 已删，manifest 条目残留可再次删除清理
+        }
+      }
+      return SyncOpResult.success('已删除备份 $name');
+    } on SyncStorageException catch (e) {
+      return SyncOpResult.failure(syncErrorText(e.code));
+    } catch (_) {
+      return const SyncOpResult.failure('删除失败，请稍后再试');
+    }
   }
 
   // ─────────────────────── 内部 ────────────────────────

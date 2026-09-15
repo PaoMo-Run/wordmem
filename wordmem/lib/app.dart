@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'shared/router/app_router.dart';
-import 'shared/providers/app_providers.dart';
 
-class WordMemApp extends ConsumerWidget {
+class WordMemApp extends StatelessWidget {
   const WordMemApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeModeProvider);
-
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: '词记',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
+      // v2.1.4：仅保留深色模式（浅色模式与主题切换已移除）
+      theme: AppTheme.dark,
       darkTheme: AppTheme.dark,
-      themeMode: themeMode,
+      themeMode: ThemeMode.dark,
       routerConfig: appRouter,
       // v8：aurora 背景改纯静态（见 glass.dart AppBackground），无动画时钟
       builder: (context, child) => child ?? const SizedBox.shrink(),

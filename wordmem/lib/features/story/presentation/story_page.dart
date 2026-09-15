@@ -39,6 +39,10 @@ class _StoryPageState extends ConsumerState<StoryPage> {
   Story? _story;
   bool _generationFailed = false;
 
+  /// 流式生成进度预览（v2.1.4：短文生成接线 SSE 流，逐字实时渲染）
+  String _streamPreview = '';
+  DateTime _lastPreviewPaint = DateTime.fromMillisecondsSinceEpoch(0);
+
   @override
   void initState() {
     super.initState();
@@ -117,11 +121,10 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     setState(() {
       _generating = true;
       _generationFailed = false;
+      _streamPreview = '';
     });
     try {
-      final repo = ref.read(storyRepositoryProvider);
-      final enriched = repo.enrich(_selectedWords);
-      final story = await repo.generate(enriched);
+      final story = await _generateViaStream();
       if (mounted) {
         setState(() {
           _story = story;
@@ -142,14 +145,37 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     }
   }
 
+  /// 流式生成短文（v2.1.4）：消费 SSE 流实时渲染预览，结束后解析为 Story。
+  /// 此前走阻塞 chat，推理模型首字延迟 10s+ 且高峰期易超时无响应。
+  Future<Story> _generateViaStream() async {
+    final repo = ref.read(storyRepositoryProvider);
+    final limited = repo.limitWords(repo.enrich(_selectedWords));
+    var raw = '';
+    await for (final snapshot in repo.generateStream(limited)) {
+      raw = snapshot;
+      // 节流：每 120ms 刷新一次预览，避免逐 token 重建整个列表
+      final now = DateTime.now();
+      if (now.difference(_lastPreviewPaint).inMilliseconds >= 120) {
+        _lastPreviewPaint = now;
+        if (mounted) setState(() => _streamPreview = snapshot);
+      }
+    }
+    if (raw.trim().isEmpty) {
+      throw const AiException(AiErrorType.parse, 'AI 返回内容为空');
+    }
+    if (mounted) setState(() => _streamPreview = raw);
+    return repo.parseAiStory(raw, limited);
+  }
+
   /// 重新生成：对已生成的短文不满意时，换一批内容重新生成
   Future<void> _regenerate() async {
     if (_selectedWords.isEmpty || _generating) return;
-    setState(() => _generating = true);
+    setState(() {
+      _generating = true;
+      _streamPreview = '';
+    });
     try {
-      final repo = ref.read(storyRepositoryProvider);
-      final enriched = repo.enrich(_selectedWords);
-      final newStory = await repo.generate(enriched);
+      final newStory = await _generateViaStream();
       if (mounted) {
         setState(() {
           // 保留原 story 的 id 与归档状态，便于直接覆盖记忆库
@@ -498,6 +524,43 @@ class _StoryPageState extends ConsumerState<StoryPage> {
                       'AI 生成失败，可检查「设置 - AI 服务」、重试，或使用剪贴板中转生成。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                // 流式生成实时预览（v2.1.4）
+                if (_generating && _streamPreview.isNotEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '正在生成…',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _streamPreview,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              height: 1.5,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

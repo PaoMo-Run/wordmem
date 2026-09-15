@@ -231,4 +231,18 @@ class DictSource {
     final row = _d.select('SELECT COUNT(*) as c FROM dict_words').first;
     return row['c'] as int;
   }
+
+  /// 从全词典随机抽 n 个词（排除指定词，要求有释义）。
+  /// 用于出题干扰项（如词根挑战的随机错误答案）。
+  /// v2.1.4：词表约 1.5 万行，ORDER BY RANDOM() 毫秒级，出题时一次性调用无性能压力。
+  List<DictWord> randomWords({required String excludeWord, int n = 50}) {
+    final rows = _d.select(
+      '''SELECT * FROM dict_words
+         WHERE lower(word) != ? AND translation IS NOT NULL
+           AND trim(translation) != ''
+         ORDER BY RANDOM() LIMIT ?''',
+      [excludeWord.toLowerCase(), n],
+    );
+    return rows.map((r) => DictWord.fromMap(r)).toList();
+  }
 }

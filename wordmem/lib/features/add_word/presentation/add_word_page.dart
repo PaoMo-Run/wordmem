@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
 import '../../../core/utils/tag_utils.dart';
@@ -30,9 +29,23 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
   bool _searched = false;
   bool _saving = false;
 
+  // v2.1.5：跟踪释义/标签是否为自动填充（区别于用户手动编辑），
+  // 改词重搜时自动填充内容跟随新词更新，避免错词释义残留造成记忆错乱
+  bool _defAutoFilled = false;
+  bool _tagsAutoFilled = false;
+  bool _programmaticDefUpdate = false;
+  bool _programmaticTagsUpdate = false;
+
   @override
   void initState() {
     super.initState();
+    // 用户手动编辑释义/标签后，标记为非自动填充（后续重搜不覆盖手动内容）
+    _customDefController.addListener(() {
+      if (!_programmaticDefUpdate) _defAutoFilled = false;
+    });
+    _tagsController.addListener(() {
+      if (!_programmaticTagsUpdate) _tagsAutoFilled = false;
+    });
     final w = widget.initialWord?.trim();
     if (w != null && w.isNotEmpty) {
       _wordController.text = w;
@@ -62,14 +75,38 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
         _matchResult = result;
         if (result != null) {
           final dict = result.dictWord;
-          if (_customDefController.text.isEmpty && dict.translation != null) {
+          // v2.1.5：改词重搜时自动填充内容跟随新词更新；
+          // 用户手动编辑过（非自动填充）则不覆盖
+          if (dict.translation != null &&
+              (_customDefController.text.isEmpty || _defAutoFilled)) {
+            _programmaticDefUpdate = true;
             _customDefController.text = dict.translation!;
+            _programmaticDefUpdate = false;
+            _defAutoFilled = true;
           }
           // 自动填充标签：将 ECDICT 编码转为友好标签
-          if (_tagsController.text.isEmpty &&
-              dict.tag != null &&
-              dict.tag!.isNotEmpty) {
+          if (dict.tag != null &&
+              dict.tag!.isNotEmpty &&
+              (_tagsController.text.isEmpty || _tagsAutoFilled)) {
+            _programmaticTagsUpdate = true;
             _tagsController.text = TagUtils.convertTags(dict.tag);
+            _programmaticTagsUpdate = false;
+            _tagsAutoFilled = true;
+          }
+        } else {
+          // 未命中词典：清掉自动填充的释义/标签，避免错词释义残留
+          //（用户手动填写的内容不动）
+          if (_defAutoFilled) {
+            _programmaticDefUpdate = true;
+            _customDefController.text = '';
+            _programmaticDefUpdate = false;
+            _defAutoFilled = false;
+          }
+          if (_tagsAutoFilled) {
+            _programmaticTagsUpdate = true;
+            _tagsController.text = '';
+            _programmaticTagsUpdate = false;
+            _tagsAutoFilled = false;
           }
         }
       });
@@ -112,10 +149,21 @@ class _AddWordPageState extends ConsumerState<AddWordPage> {
       ref.read(wordListVersionProvider.notifier).state++;
 
       if (mounted) {
+        // v2.1.5：连续添加——成功后清空已填内容留在本页，便于批量录入
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$word" 已添加到词库')),
+          SnackBar(content: Text('"$word" 已添加到词库，可继续添加下一个')),
         );
-        context.pop();
+        _wordController.clear();
+        _customDefController.clear();
+        _noteController.clear();
+        _tagsController.clear();
+        setState(() {
+          _isFavorite = false;
+          _matchResult = null;
+          _searched = false;
+          _defAutoFilled = false;
+          _tagsAutoFilled = false;
+        });
       }
     } catch (e) {
       if (mounted) {

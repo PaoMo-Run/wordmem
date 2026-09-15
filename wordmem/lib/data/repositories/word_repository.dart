@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math' as math;
+
 import '../database/app_database.dart';
 import '../database/word_dao.dart';
 import '../sources/dict_source.dart';
@@ -359,6 +361,111 @@ class WordRepository {
     }
 
     return options..shuffle();
+  }
+
+  /// 为复习队列生成两环节四选一选项（v2.1.5 统一随机化）。
+  ///
+  /// 修复旧逻辑的可观察规律 bug：
+  /// - 英译汉旧逻辑干扰项按队列顺序取前 3 个其它词 → 每题干扰项几乎固定；
+  /// - 汉译英旧逻辑用形似词按编辑距离排序 → 规律性强。
+  /// 新逻辑干扰项随机抽选，来源优先级：复习队列其它词（随机）→
+  /// 个人词库随机 → 内置词典随机（兜底，保证队列很小时也能凑满 4 选项）。
+  /// 每题独立打乱消费干扰池，避免小队列下各题共用同一组干扰项。
+  Map<int, ReviewStageOptions> buildReviewStageOptions(
+      List<Map<String, dynamic>> queue) {
+    final random = math.Random();
+
+    // 各词释义：custom_def 优先，回退词典 translation
+    final defs = <int, String>{};
+    final wordById = <int, String>{};
+    for (final w in queue) {
+      final id = w['id'] as int;
+      wordById[id] = w['word'] as String;
+      var def = ((w['custom_def'] as String?) ?? '').trim();
+      if (def.isEmpty) {
+        def = (_dictSource.lookup(w['word'] as String)?.translation ?? '').trim();
+      }
+      defs[id] = def;
+    }
+
+    // 随机干扰池（word -> definition），按优先级填充
+    final pool = <WordOption>[];
+    final poolSeen = <String>{};
+    final poolCap = queue.length * 3 + 12;
+
+    // 1) 复习队列其它词（打乱）
+    final shuffledQueue = [...queue]..shuffle(random);
+    for (final w in shuffledQueue) {
+      if (pool.length >= poolCap) break;
+      final word = w['word'] as String;
+      if (!poolSeen.add(word.toLowerCase())) continue;
+      pool.add(WordOption(word: word, definition: defs[w['id'] as int] ?? ''));
+    }
+    // 2) 个人词库随机补足
+    if (pool.length < poolCap) {
+      final userAll = _wordDao.getAll(limit: 100000).toList()..shuffle(random);
+      for (final w in userAll) {
+        if (pool.length >= poolCap) break;
+        final word = w['word'] as String;
+        if (!poolSeen.add(word.toLowerCase())) continue;
+        var def = ((w['custom_def'] as String?) ?? '').trim();
+        if (def.isEmpty) {
+          def = (_dictSource.lookup(word)?.translation ?? '').trim();
+        }
+        pool.add(WordOption(word: word, definition: def));
+      }
+    }
+    // 3) 内置词典随机兜底（保证队列很小时也能凑满 4 选项）
+    if (pool.length < poolCap) {
+      for (final d in _dictSource.randomWords(excludeWord: '', n: 60)) {
+        if (pool.length >= poolCap) break;
+        if (!poolSeen.add(d.word.toLowerCase())) continue;
+        pool.add(WordOption(word: d.word, definition: d.translation ?? ''));
+      }
+    }
+
+    final result = <int, ReviewStageOptions>{};
+    for (final w in queue) {
+      final id = w['id'] as int;
+      final word = wordById[id]!;
+      final correctDef = defs[id] ?? '';
+
+      // 每题独立打乱干扰池，保证各题抽到的干扰项组合不同
+      final shuffledPool = [...pool]..shuffle(random);
+
+      // 汉译英：正确单词 + 3 个随机干扰（词不重复）
+      final wo = <WordOption>[WordOption(word: word, definition: correctDef)];
+      final usedWords = <String>{word.toLowerCase()};
+      for (final cand in shuffledPool) {
+        if (wo.length >= 4) break;
+        if (usedWords.contains(cand.word.toLowerCase())) continue;
+        usedWords.add(cand.word.toLowerCase());
+        wo.add(cand);
+      }
+
+      // 英译汉：正确释义 + 3 个随机干扰（释义非空、互不重复）
+      var enToZhOk = correctDef.isNotEmpty;
+      final ez = <WordOption>[];
+      if (enToZhOk) {
+        ez.add(WordOption(word: word, definition: correctDef));
+        final usedDefs = <String>{correctDef};
+        for (final cand in shuffledPool) {
+          if (ez.length >= 4) break;
+          if (cand.word.toLowerCase() == word.toLowerCase()) continue;
+          final d = cand.definition.trim();
+          if (d.isEmpty || !usedDefs.add(d)) continue;
+          ez.add(WordOption(word: cand.word, definition: d));
+        }
+        if (ez.length < 4) enToZhOk = false;
+      }
+
+      result[id] = ReviewStageOptions(
+        wordOptions: wo..shuffle(random),
+        enToZhOptions: ez..shuffle(random),
+        enToZhAvailable: enToZhOk,
+      );
+    }
+    return result;
   }
 
   /// 生成近义词挑战题列表（每道题：中文释义 + 8 词，含 2~4 个正确答案）

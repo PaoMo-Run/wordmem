@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
 import '../../../core/constants/app_constants.dart';
@@ -24,10 +25,24 @@ class _MePageState extends ConsumerState<MePage> {
   int _totalWords = 0;
   int _mastered = 0;
 
+  /// 应用版本号（从安装包实时读取，避免硬编码常量与发版脱节）
+  String _appVersion = AppConstants.appVersion;
+
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _appVersion = info.version);
+    } catch (_) {
+      // 读取失败时保留 AppConstants 兜底值
+    }
   }
 
   void _loadStats() {
@@ -47,7 +62,6 @@ class _MePageState extends ConsumerState<MePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeMode = ref.watch(themeModeProvider);
     final reminderEnabled = ref.watch(reminderEnabledProvider);
     final reminderHour = ref.watch(reminderHourProvider);
     final reminderMinute = ref.watch(reminderMinuteProvider);
@@ -225,25 +239,6 @@ class _MePageState extends ConsumerState<MePage> {
                 onChanged: (v) =>
                     ref.read(wordAudioEnabledProvider.notifier).set(v),
               ),
-              ListTile(
-                leading: const Icon(Icons.palette_outlined),
-                title: const Text('主题模式'),
-                trailing: SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment(
-                        value: ThemeMode.system, icon: Icon(Icons.auto_mode)),
-                    ButtonSegment(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode_outlined)),
-                    ButtonSegment(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode_outlined)),
-                  ],
-                  selected: {themeMode},
-                  onSelectionChanged: (s) =>
-                      ref.read(themeModeProvider.notifier).set(s.first),
-                ),
-              ),
             ],
           ),
 
@@ -372,7 +367,7 @@ class _MePageState extends ConsumerState<MePage> {
                 leading: const Icon(Icons.info_outline),
                 title: const Text('关于词记'),
                 subtitle:
-                    const Text('版本 ${AppConstants.appVersion} · 更新日志 / 隐私政策'),
+                    Text('版本 $_appVersion · 更新日志 / 隐私政策'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/about'),
               ),

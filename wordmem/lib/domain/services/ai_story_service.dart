@@ -72,6 +72,45 @@ class AiStoryService {
     return _parseStory(content, limited);
   }
 
+  /// 取前 [_maxWords] 个单词（供流式路径：调用方先用本方法取 limited 集，
+  /// 再把同一集合传给 [generateStream] 与 [parseStory]，保证三段数据一致）。
+  List<StoryWord> limitWords(List<StoryWord> words) =>
+      words.take(_maxWords).toList();
+
+  /// 流式生成短文（v2.1.4 接线 chatStream）。
+  ///
+  /// 此前短文生成走阻塞 `chat`：推理模型（GLM-5.3-flash 等"始终思考"模型）
+  /// 首字延迟实测 10s+，高峰期超时无响应；流式后首字延迟 <1s，正文逐字渲染。
+  /// 每次 yield 累积的原始输出（非增量），流结束后由调用方 [parseStory] 解析。
+  /// 请求参数与 [generate] 完全一致。
+  Stream<String> generateStream(
+    List<StoryWord> words, {
+    String? title,
+  }) async* {
+    if (words.isEmpty) {
+      throw const AiException(AiErrorType.parse, '没有可用的单词');
+    }
+    final messages = [
+      AiMessage(role: AiRole.system, content: _systemPrompt()),
+      AiMessage(role: AiRole.user, content: _userPrompt(words, title)),
+    ];
+    final buffer = StringBuffer();
+    await for (final delta in _ai.chatStream(AiRequest(
+      messages: messages,
+      temperature: 0.9,
+      maxTokens: _enableThinking ? 1600 + _thinkingLevel.budgetTokens : 1600,
+      enableThinking: _enableThinking,
+      thinkingBudgetTokens: _thinkingLevel.budgetTokens,
+    ))) {
+      buffer.write(delta);
+      yield buffer.toString();
+    }
+  }
+
+  /// 解析流式结束后的原始输出为 [Story]（公开 _parseStory 供流式路径复用）
+  Story parseStory(String raw, List<StoryWord> words) =>
+      _parseStory(raw, words);
+
   String _systemPrompt() {
     return [
       '你是一位英语学习 App 的内容生成助手。',

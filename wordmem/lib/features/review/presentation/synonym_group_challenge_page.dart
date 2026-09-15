@@ -93,10 +93,6 @@ class _SynonymGroupChallengePageState
   }
 
   void _submit() {
-    setState(() {
-      _submitted = true;
-      _passed = _passedCurrent;
-    });
     if (_passed) {
       final repo = ref.read(wordRepositoryProvider);
       _mastery =
@@ -104,30 +100,12 @@ class _SynonymGroupChallengePageState
       // 通知词群记忆页刷新熟悉度
       ref.read(groupVersionProvider.notifier).state++;
     }
-    // 提交后立即弹出通过反馈对话框，关闭后停留在作答详情
-    _showFeedback();
-  }
-
-  /// 通过反馈对话框（纯反馈，继续操作走页面下方"下一题/完成"按钮）
-  Future<void> _showFeedback() async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(_passed ? '本群通过！' : '本群未通过'),
-        content: Text(
-          _passed
-              ? '熟悉度 +1（${(_mastery - 1).clamp(0, 4)} → $_mastery / 4）'
-              : '正确 $_correctSelected/$_requiredCorrect，未达通过线；'
-                  '已展示作答详情，可以再测一次巩固。',
-        ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
+    setState(() {
+      _submitted = true;
+      _passed = _passedCurrent;
+    });
+    // v2.1.4：移除提交后的反馈弹窗（与页面下方作答详情重复），
+    // 熟悉度变化直接在结果区展示
   }
 
   /// 进入下一个词群（最后一个则返回列表页）
@@ -292,6 +270,16 @@ class _SynonymGroupChallengePageState
                       ),
                       textAlign: TextAlign.center,
                     ),
+                    if (_passed) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '熟悉度 +1（${(_mastery - 1).clamp(0, 4)} → $_mastery / 4）',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     // 正确答案展示
                     Wrap(

@@ -24,7 +24,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final retention = ref.watch(desiredRetentionProvider);
-    final themeMode = ref.watch(themeModeProvider);
     final reminderEnabled = ref.watch(reminderEnabledProvider);
     final reminderHour = ref.watch(reminderHourProvider);
     final reminderMinute = ref.watch(reminderMinuteProvider);
@@ -141,33 +140,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
                       ),
                     ),
-                ],
-              ),
-
-              // 外观
-              const _SectionHeader('外观'),
-              GlassSection(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.palette_outlined),
-                    title: const Text('主题模式'),
-                    trailing: SegmentedButton<ThemeMode>(
-                      segments: const [
-                        ButtonSegment(
-                            value: ThemeMode.system,
-                            icon: Icon(Icons.auto_mode)),
-                        ButtonSegment(
-                            value: ThemeMode.light,
-                            icon: Icon(Icons.light_mode_outlined)),
-                        ButtonSegment(
-                            value: ThemeMode.dark,
-                            icon: Icon(Icons.dark_mode_outlined)),
-                      ],
-                      selected: {themeMode},
-                      onSelectionChanged: (s) =>
-                          ref.read(themeModeProvider.notifier).set(s.first),
-                    ),
-                  ),
                 ],
               ),
 

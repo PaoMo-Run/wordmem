@@ -32,6 +32,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+# Flutter 工具本机状态（不应入库）
+.flutter
+.flutter_tool_state
 
 # Symbolication related
 app.*.symbols

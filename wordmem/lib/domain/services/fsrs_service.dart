@@ -74,11 +74,11 @@ class ScheduleResult {
 
 /// 经典艾宾浩斯遗忘曲线复习算法（7 周期）
 ///
-/// 固定复习间隔序列（用户确认版）：
-///   [5 分钟, 30 分钟, 12 小时, 1 天, 2 天, 4 天, 7 天]
+/// 固定复习间隔序列（v2.1.4 用户确认版）：
+///   [45 分钟, 3 小时, 8 小时, 1 天, 2 天, 4 天, 7 天]
 ///   - 前 3 个为短期记忆检测节点（分钟/小时级）
 ///   - 后 4 个为长期记忆强化节点（天级）
-/// - `reps` 表示当前所处的周期（0=新词，1=5分钟后，2=30分钟后……
+/// - `reps` 表示当前所处的周期（0=新词，1=45分钟后，2=3小时后……
 ///   reps=7 对应 7 天后；完成第 7 周期且答对 → 永久掌握）
 /// - `stability` 复用为"当前周期间隔天数"，用于遗忘曲线计算
 /// - 遗忘曲线：R(t) = e^(-t/S)，S 为当前间隔（记忆强度）
@@ -89,14 +89,14 @@ class ScheduleResult {
 /// - 正确 (good)      → 进入下一周期
 /// - 很轻松 (easy)    → 跳过一档，加速（+2，封顶第 7 周期）
 ///
-/// 状态映射：reps==0 → 新词，reps 1~2 → 学习中（分钟/小时级），
-///           reps 3~7 → 复习中，完成第 7 周期 → 已掌握（mastered）。
+/// 状态映射：reps==0 → 新词，reps 1~3 → 学习中（分钟/小时级），
+///           reps 4~7 → 复习中，完成第 7 周期 → 已掌握（mastered）。
 class FsrsService {
   /// 经典艾宾浩斯 7 周期复习间隔（固定节点，不做目标记忆率微调）
   static const List<Duration> ebbinghausIntervals = [
-    Duration(minutes: 5),
-    Duration(minutes: 30),
-    Duration(hours: 12),
+    Duration(minutes: 45),
+    Duration(hours: 3),
+    Duration(hours: 8),
     Duration(days: 1),
     Duration(days: 2),
     Duration(days: 4),
@@ -158,13 +158,13 @@ class FsrsService {
     var lapses = card.lapses;
 
     if (reps == 0) {
-      // 新词首次复习：先进入第 1 周期（5 分钟）
+      // 新词首次复习：先进入第 1 周期（45 分钟）
       reps = 1;
       if (rating == ReviewRating.again) {
         lapses++;
         // 立即重做第 1 周期
       } else if (rating == ReviewRating.easy) {
-        reps = 3; // 首次就很轻松，直接跳到 12 小时
+        reps = 3; // 首次就很轻松，直接跳到 8 小时
       }
     } else {
       switch (rating) {
@@ -209,8 +209,8 @@ class FsrsService {
         ? now.add(const Duration(minutes: 1))
         : now.add(interval);
     final newStability = interval.inSeconds / 86400.0;
-    // reps 1~2 是分钟/小时级短间隔（学习中），reps>=3 进入天级（复习中）
-    final newState = reps <= 2 ? CardState.learning : CardState.review;
+    // reps 1~3 是分钟/小时级短间隔（学习中），reps>=4 进入天级（复习中）
+    final newState = reps <= 3 ? CardState.learning : CardState.review;
 
     final newCard = card.copyWith(
       state: newState,

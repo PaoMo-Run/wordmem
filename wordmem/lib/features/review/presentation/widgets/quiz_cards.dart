@@ -66,7 +66,7 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
         widget.options[_selected!].word == widget.word;
 
     return Center(
-      child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -109,26 +109,34 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
               ),
             ),
             const SizedBox(height: 24),
-            LayoutBuilder(builder: (context, constraints) {
-              final wide = constraints.maxWidth > 600;
-              final options = widget.options.asMap().entries.map((e) {
-                final idx = e.key;
-                final opt = e.value;
-                return _buildOption(theme, idx, opt, answered, correct);
-              }).toList();
-              if (wide) {
-                return GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 3.4,
-                  children: options,
-                );
-              }
-              return Column(children: options);
-            }),
+            // v2.1.5：选项区限高滚动，防止释义过长把「下一题」按钮顶出屏幕
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+              ),
+              child: SingleChildScrollView(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final wide = constraints.maxWidth > 600;
+                  final options = widget.options.asMap().entries.map((e) {
+                    final idx = e.key;
+                    final opt = e.value;
+                    return _buildOption(theme, idx, opt, answered, correct);
+                  }).toList();
+                  if (wide) {
+                    return GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 3.4,
+                      children: options,
+                    );
+                  }
+                  return Column(children: options);
+                }),
+              ),
+            ),
             if (answered) ...[
               const SizedBox(height: 8),
               Text(
@@ -140,6 +148,8 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 12),
               GlassButton(
@@ -209,6 +219,9 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
               style: theme.textTheme.bodyMedium
                   ?.copyWith(fontWeight: FontWeight.w600),
               textAlign: TextAlign.center,
+              // v2.1.5：释义过长截断，防止选项区过高
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -264,7 +277,7 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
         answered && widget.options[_selected!].word == widget.word;
 
     return Center(
-      child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -291,26 +304,34 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
               ),
             ),
             const SizedBox(height: 24),
-            LayoutBuilder(builder: (context, constraints) {
-              final wide = constraints.maxWidth > 600;
-              final options = widget.options.asMap().entries.map((e) {
-                final idx = e.key;
-                final opt = e.value;
-                return _buildOption(theme, idx, opt, answered, correct);
-              }).toList();
-              if (wide) {
-                return GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 2.8,
-                  children: options,
-                );
-              }
-              return Column(children: options);
-            }),
+            // v2.1.5：选项区限高滚动，防止提交后释义过长把「下一题」按钮顶出屏幕
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+              ),
+              child: SingleChildScrollView(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final wide = constraints.maxWidth > 600;
+                  final options = widget.options.asMap().entries.map((e) {
+                    final idx = e.key;
+                    final opt = e.value;
+                    return _buildOption(theme, idx, opt, answered, correct);
+                  }).toList();
+                  if (wide) {
+                    return GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 2.8,
+                      children: options,
+                    );
+                  }
+                  return Column(children: options);
+                }),
+              ),
+            ),
             if (answered) ...[
               const SizedBox(height: 8),
               Row(
@@ -402,7 +423,7 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
-          // 提交后显示该选项释义
+          // 提交后显示该选项释义（v2.1.5：截断防撑爆屏幕）
           if (answered && opt.definition.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: 16, top: 2),
@@ -411,6 +432,8 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
         ],
@@ -453,6 +476,8 @@ class _DictationCardState extends State<DictationCard> {
   final _focus = FocusNode();
   bool _answered = false;
   bool _correct = false;
+  // v2.1.5：首字母提示改为按需展开（默认不显示，点「首字母提示」按钮才出现）
+  bool _hintShown = false;
 
   Color get _goodColor => Theme.of(context).brightness == Brightness.dark
       ? AppColors.ratingGoodDark
@@ -492,7 +517,7 @@ class _DictationCardState extends State<DictationCard> {
     final theme = Theme.of(context);
 
     return Center(
-      child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -501,7 +526,7 @@ class _DictationCardState extends State<DictationCard> {
             const _DirectionChip(text: '默写', color: AppColors.ratingHard),
             const SizedBox(height: 16),
             Text(
-              widget.showHint ? '根据释义和首字母提示默写单词' : '根据释义默写单词',
+              widget.showHint ? '根据释义默写单词，需要提示可点下方按钮' : '根据释义默写单词',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -520,22 +545,30 @@ class _DictationCardState extends State<DictationCard> {
                     textAlign: TextAlign.center,
                   ),
                   if (widget.showHint) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _hint(widget.word),
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
+                    const SizedBox(height: 12),
+                    if (!_hintShown)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _hintShown = true),
+                        icon: const Icon(Icons.lightbulb_outline, size: 18),
+                        label: const Text('首字母提示'),
+                      )
+                    else ...[
+                      Text(
+                        _hint(widget.word),
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 4,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '共 ${widget.word.length} 个字母',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 4),
+                      Text(
+                        '共 ${widget.word.length} 个字母',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ],
               ),

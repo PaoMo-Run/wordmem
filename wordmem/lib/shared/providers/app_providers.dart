@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -180,38 +179,6 @@ final importRepositoryProvider = Provider<ImportRepository>((ref) {
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService();
 });
-
-// ============================================================
-// 主题 Provider
-// ============================================================
-
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider).maybeWhen(
-        data: (p) => p,
-        orElse: () => null,
-      );
-  return ThemeModeNotifier(prefs);
-});
-
-class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  final SharedPreferences? _prefs;
-
-  ThemeModeNotifier(this._prefs)
-      : super(_themeModeFromString(_prefs?.getString(AppConstants.keyThemeMode)));
-
-  static ThemeMode _themeModeFromString(String? s) {
-    return switch (s) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    };
-  }
-
-  void set(ThemeMode mode) {
-    state = mode;
-    _prefs?.setString(AppConstants.keyThemeMode, mode.name);
-  }
-}
 
 // ============================================================
 // 目标记忆率 Provider

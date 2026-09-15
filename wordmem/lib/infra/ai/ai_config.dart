@@ -52,7 +52,7 @@ class AiPresets {
     name: 'Agens(Free)',
     baseUrl: 'https://apihub.agnes-ai.com/v1',
     defaultModel: 'agnes-2.5-flash',
-    apiKeyEncoded: 'BFtfBj4IJyEJPlgSN1kDeGJZDXgAAwokDHUrI18OJ2txBEpXMVlKCQkqWxY2ECgSQ3hL',
+    apiKeyEncoded: 'BFtfUzxRI3gQEylcHVJDCVhxPWc+UQYqWiwCHR4EQGZDZQFYI3ciVzwSGAQ2UFsANFlH',
   );
   static const deepseek = AiProviderPreset(
     name: 'DeepSeek',
@@ -133,7 +133,7 @@ class AiConfig {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
-    this.timeoutSeconds = 30,
+    this.timeoutSeconds = 90,
     this.enableThinking = true,
     this.thinkingLevel = AiThinkingLevel.medium,
   });

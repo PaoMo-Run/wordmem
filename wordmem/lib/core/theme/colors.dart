@@ -92,4 +92,5 @@ class AppColors {
   static const Color quickStoryMemory = Color(0xFF0E9E9C);  // 短文记忆库（青）
   static const Color quickLibrary = Color(0xFF5C7280);      // 词库（蓝灰）
   static const Color quickStats = Color(0xFF3C9D6B);        // 统计（绿）
+  static const Color quickSync = Color(0xFFB0722D);         // 进度同步（暖棕）
 }

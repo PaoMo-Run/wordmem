@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../../../data/repositories/sync_repository.dart';
 import '../../../domain/services/sync/sync_models.dart';
@@ -31,6 +32,8 @@ class _SyncPageState extends ConsumerState<SyncPage> {
   bool _downloading = false;
   bool _repairedNotice = false;
   List<SnapshotEntry> _snapshots = const [];
+  // v2.1.5：云端快照列表只展示最近若干份，避免条目过多刷屏
+  static const int _visibleSnapshots = 5;
 
   @override
   void initState() {
@@ -324,13 +327,33 @@ class _SyncPageState extends ConsumerState<SyncPage> {
   }
 
   /// 首次配置时生成本机身份（§3.3：device_id 随机 UUID + device_name）
+  /// v2.1.4：device_name 读取真机品牌+型号（如 "Xiaomi 2210132C"），
+  /// 旧版本写入的默认值"安卓设备"也一并迁移为真实设备名。
   Future<void> _ensureDeviceIdentity() async {
     final store = ref.read(syncSettingsStoreProvider);
     if (await store.read(SyncSettingKeys.deviceId) == null) {
       await store.write(SyncSettingKeys.deviceId, _generateUuidV4());
     }
-    if (await store.read(SyncSettingKeys.deviceName) == null) {
-      await store.write(SyncSettingKeys.deviceName, '安卓设备');
+    final stored = await store.read(SyncSettingKeys.deviceName);
+    if (stored == null || stored == '安卓设备') {
+      await store.write(SyncSettingKeys.deviceName,
+          await _resolveDeviceName());
+    }
+  }
+
+  /// 读取真机品牌 + 型号；失败回退"安卓设备"
+  static Future<String> _resolveDeviceName() async {
+    try {
+      final plugin = DeviceInfoPlugin();
+      final android = await plugin.androidInfo;
+      final brand = android.brand.trim();
+      final model = android.model.trim();
+      if (brand.isEmpty && model.isEmpty) return '安卓设备';
+      if (brand.isEmpty) return model;
+      if (model.isEmpty || model == brand) return brand;
+      return '$brand $model';
+    } catch (_) {
+      return '安卓设备';
     }
   }
 
@@ -444,13 +467,24 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                         subtitle: Text('上传数据后会显示在这里'),
                       )
                     else ...[
-                      if (_snapshots.length > SyncRepository.totalSnapshotsHint)
-                        const ListTile(
-                          leading: Icon(Icons.warning_amber_outlined),
-                          title: Text('云端快照较多'),
-                          subtitle: Text('建议到网盘的 wordmem 目录手动清理'),
+                      // v2.1.5：只展示最近 5 份（remoteSnapshots 已按时间倒序），
+                      // 超出部分用一行汇总提示代替，避免列表冗长
+                      for (final s in _snapshots.take(_visibleSnapshots))
+                        _snapshotTile(s),
+                      if (_snapshots.length > _visibleSnapshots)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.more_horiz, size: 20),
+                          title:
+                              const Text('仅显示最近 $_visibleSnapshots 份'),
+                          subtitle: Text(
+                            _snapshots.length >
+                                    SyncRepository.totalSnapshotsHint
+                                ? '云端共 ${_snapshots.length} 份快照，'
+                                    '建议到网盘的 wordmem 目录手动清理'
+                                : '云端共 ${_snapshots.length} 份快照',
+                          ),
                         ),
-                      for (final s in _snapshots) _snapshotTile(s),
                     ],
                   ],
                 ),
@@ -472,10 +506,12 @@ class _SyncPageState extends ConsumerState<SyncPage> {
 
   Widget _snapshotTile(SnapshotEntry s) {
     final when = s.uploadedTime;
-    final whenText = when != null
-        ? '${when.year}-${when.month.toString().padLeft(2, '0')}-'
-            '${when.day.toString().padLeft(2, '0')} '
-            '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}'
+    // v2.1.4：云端存 UTC，展示按设备本地时区（北京时间）换算
+    final local = when?.toLocal();
+    final whenText = local != null
+        ? '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+            '${local.day.toString().padLeft(2, '0')} '
+            '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}'
         : s.name;
     final degraded = s.sha256 == null; // 降级重建态：信息有限
     final sizeText = s.size != null
@@ -491,14 +527,67 @@ class _SyncPageState extends ConsumerState<SyncPage> {
           if (degraded) '信息有限',
         ].join(' · '),
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.download_outlined),
-        tooltip: '恢复此备份',
-        onPressed: _uploading || _downloading
-            ? null
-            : () => _download(s.name), // 换选旧版（D4）
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // v2.1.5：删除云端备份（二次确认）
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: '删除此备份',
+            onPressed: _uploading || _downloading
+                ? null
+                : () => _confirmDeleteSnapshot(s),
+          ),
+          IconButton(
+            icon: const Icon(Icons.download_outlined),
+            tooltip: '恢复此备份',
+            onPressed: _uploading || _downloading
+                ? null
+                : () => _download(s.name), // 换选旧版（D4）
+          ),
+        ],
       ),
     );
+  }
+
+  /// 删除云端备份：二次确认 → 调 deleteSnapshot → 刷新列表
+  Future<void> _confirmDeleteSnapshot(SnapshotEntry s) async {
+    final when = s.uploadedTime?.toLocal();
+    final whenText = when != null
+        ? '${when.year}-${when.month.toString().padLeft(2, '0')}-'
+            '${when.day.toString().padLeft(2, '0')} '
+            '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}'
+        : s.name;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除云端备份？'),
+        content: Text('将永久删除 $whenText 的备份（${s.deviceName ?? "未知设备"}），'
+            '删除后无法恢复。确认删除吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _downloading = true); // 复用忙态锁，防止并发操作
+    try {
+      final result = await _buildRepo().deleteSnapshot(s.name);
+      if (mounted) _snack(result.message);
+      if (result.ok) await _refreshSnapshots();
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
   }
 }
 

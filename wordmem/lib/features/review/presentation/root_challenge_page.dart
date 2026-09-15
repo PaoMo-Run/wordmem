@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../domain/services/root_matcher.dart';
+import '../../../domain/services/synonym_detector.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
 
@@ -84,26 +85,59 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
       }
       if (correctDef.isEmpty) continue;
 
-      // 干扰项：其他题目的释义 + 词典随机词释义
+      // v2.1.4 干扰项重构：旧逻辑从"同批其他词"取干扰项，
+      // 批量恰好 4 词时每题干扰项完全相同，可被规律秒杀。
+      // 新构成：1 个近义干扰（释义核心词与正确释义近义）+ 2 个全词典随机释义。
       final distractors = <String>[];
-      for (final other in picked) {
-        if (other == w || distractors.length >= 3) continue;
-        final otherRow = wordDao.getByWord(other);
-        var def = otherRow?['custom_def'] as String?;
-        if (def == null || def.trim().isEmpty) {
-          def = dictSource.lookup(other)?.translation ?? '';
+
+      // 随机候选池（全词典，非用户词表）
+      final candidates = dictSource
+          .randomWords(excludeWord: w, n: 50)
+        ..shuffle();
+
+      String? nearDef;
+      for (final c in candidates) {
+        final def = (c.translation ?? '').trim();
+        if (def.isEmpty || def == correctDef || distractors.contains(def)) {
+          continue;
         }
-        if (def.isNotEmpty && def != correctDef) distractors.add(def.trim());
-      }
-      // 不足 3 个时从词根 examples 的释义补
-      var fallbackIdx = 0;
-      while (distractors.length < 3 && fallbackIdx < match.root.examples.length) {
-        final ex = match.root.examples[fallbackIdx];
-        fallbackIdx++;
-        if (ex == w) continue;
-        final def = dictSource.lookup(ex)?.translation ?? '';
-        if (def.isNotEmpty && def != correctDef && !distractors.contains(def)) {
+        final near = SynonymDetector.isSynonym(correctDef, def);
+        if (near && nearDef == null) {
+          nearDef = def;
+        } else if (!near && distractors.length < 2) {
           distractors.add(def);
+        }
+        if (nearDef != null && distractors.length >= 2) break;
+      }
+      if (nearDef != null) distractors.add(nearDef);
+
+      // 保底：随机候选不足 3 个时，从同批其他词释义 / 词根 examples 补齐（原逻辑）
+      if (distractors.length < 3) {
+        for (final other in picked) {
+          if (other == w || distractors.length >= 3) continue;
+          final otherRow = wordDao.getByWord(other);
+          var def = otherRow?['custom_def'] as String?;
+          if (def == null || def.trim().isEmpty) {
+            def = dictSource.lookup(other)?.translation ?? '';
+          }
+          if (def.isNotEmpty &&
+              def.trim() != correctDef &&
+              !distractors.contains(def.trim())) {
+            distractors.add(def.trim());
+          }
+        }
+        var fallbackIdx = 0;
+        while (distractors.length < 3 &&
+            fallbackIdx < match.root.examples.length) {
+          final ex = match.root.examples[fallbackIdx];
+          fallbackIdx++;
+          if (ex == w) continue;
+          final def = dictSource.lookup(ex)?.translation ?? '';
+          if (def.isNotEmpty &&
+              def != correctDef &&
+              !distractors.contains(def)) {
+            distractors.add(def);
+          }
         }
       }
       if (distractors.length < 3) continue;

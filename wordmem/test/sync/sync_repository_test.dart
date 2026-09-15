@@ -430,7 +430,16 @@ void main() {
       final r = await repo.download(confirmed: true);
       expect(r.ok, isTrue, reason: r.message);
       expect(r.message, contains('已恢复到'));
-      expect(r.message, contains('2026-09-03 14:15'));
+      // v2.1.5：恢复提示改为设备本地时区（北京时间）显示，
+      // 期望值由快照 UTC 时间动态换算，测试不依赖运行机器时区
+      final expectedLocal = DateTime.utc(2026, 9, 3, 14, 15).toLocal();
+      final expectedText =
+          '${expectedLocal.year.toString().padLeft(2, '0')}-'
+          '${expectedLocal.month.toString().padLeft(2, '0')}-'
+          '${expectedLocal.day.toString().padLeft(2, '0')} '
+          '${expectedLocal.hour.toString().padLeft(2, '0')}:'
+          '${expectedLocal.minute.toString().padLeft(2, '0')}';
+      expect(r.message, contains(expectedText));
       expect(backup.importedPaths, ['/tmp/fake.zip']);
       // 水位更新为所恢复快照
       expect(settings.map[SyncSettingKeys.watermarkName],

@@ -5,8 +5,11 @@ class AppConstants {
   static const String appName = '词记';
   static const String appNameEn = 'WordMem';
 
-  /// 应用版本号（与 pubspec.yaml 保持一致，用于"关于"页展示）
-  static const String appVersion = '2.1.3';
+  /// 应用版本号（与 pubspec.yaml 保持一致）
+  ///
+  /// ⚠️ 仅作兜底/元数据用：UI 展示请优先用 PackageInfo 实时读取
+  /// （about_page / me_page），避免发版时忘记同步此处。
+  static const String appVersion = '2.1.5';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。
@@ -53,7 +56,6 @@ class AppConstants {
   static const String keyReminderHour = 'reminder_hour';
   static const String keyReminderMinute = 'reminder_minute';
   static const String keyReminderEnabled = 'reminder_enabled';
-  static const String keyThemeMode = 'theme_mode';
   static const String keyDesiredRetention = 'desired_retention';
   static const String keyWordAudioEnabled = 'word_audio_enabled';
 }

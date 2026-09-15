@@ -31,7 +31,7 @@ class AiConfigStore {
       baseUrl: p?.getString(_kBaseUrl) ?? AiPresets.deepseek.baseUrl,
       apiKey: await _secure.read(key: _kApiKey) ?? '',
       model: p?.getString(_kModel) ?? AiPresets.deepseek.defaultModel,
-      timeoutSeconds: p?.getInt(_kTimeout) ?? 30,
+      timeoutSeconds: p?.getInt(_kTimeout) ?? 90,
       enableThinking: p?.getBool(_kEnableThinking) ?? true,
       thinkingLevel:
           AiThinkingLevel.fromName(p?.getString(_kThinkingLevel)),
