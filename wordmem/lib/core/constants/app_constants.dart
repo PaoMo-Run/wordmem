@@ -63,6 +63,9 @@ class AppConstants {
   /// 用户跳过后重新进入候选池的间隔（短于答对，保证跳过的词更快被补测）
   static const Duration masteredQuizSkipDelay = Duration(days: 7);
 
+  /// 首页「即将到期」提示的时间窗口（小时）
+  static const int upcomingDueWindowHours = 3;
+
   // SharedPreferences keys
   static const String keyFirstLaunch = 'first_launch';
   static const String keyReminderHour = 'reminder_hour';

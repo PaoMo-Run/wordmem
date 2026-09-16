@@ -96,8 +96,9 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
     }
 
     final stats = _stats!;
-    // v2.1.6：未来 3 小时内将到期的词数（首页提示）
-    final upcoming = ref.watch(upcomingDueCountProvider).valueOrNull ?? 0;
+    // v2.1.6：未来 3 小时内将到期的词数（首页提示）。
+    // null = 尚未加载完成或查询异常 —— 此时整行不展示，避免显示误导性的 0。
+    final upcoming = ref.watch(upcomingDueCountProvider).valueOrNull;
 
     return RefreshIndicator(
       onRefresh: () async => _loadData(),
@@ -125,13 +126,13 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
 class _TodayHero extends StatelessWidget {
   final TodayStats stats;
   final int streak;
-  /// 未来 3 小时内将到期的词数（v2.1.6）
-  final int upcoming;
+  /// 未来 3 小时内将到期的词数（v2.1.6）；null = 尚未就绪，整行不展示
+  final int? upcoming;
 
   const _TodayHero({
     required this.stats,
     required this.streak,
-    this.upcoming = 0,
+    this.upcoming,
   });
 
   String get _greeting {
@@ -146,12 +147,7 @@ class _TodayHero extends StatelessWidget {
 
   String _subtitle(int due) {
     if (stats.totalWords == 0) return '词库还是空的，先加几个单词';
-    if (due > 0) {
-      return upcoming > 0
-          ? '还有 $due 个单词到期 · 未来 3 小时还有 $upcoming 个会到期'
-          : '还有 $due 个单词到期';
-    }
-    if (upcoming > 0) return '未来 3 小时有 $upcoming 个单词会到期';
+    if (due > 0) return '还有 $due 个单词到期';
     if (stats.reviewedToday > 0) return '今天过了 ${stats.reviewedToday} 个，收工';
     return '今天没有到期的单词';
   }
@@ -229,6 +225,34 @@ class _TodayHero extends StatelessWidget {
                 ),
               ],
             ),
+            // v2.1.6：未来 3 小时到期提示（独立一行，始终可见——值为 0 也展示，
+            // 便于用户确认该功能生效；只有 provider 尚未就绪时才隐藏）
+            if (upcoming != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule_outlined,
+                    size: 15,
+                    color: upcoming! > 0 ? cs.primary : cs.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      upcoming! > 0
+                          ? '未来 3 小时有 ${upcoming!} 个词将到期'
+                          : '未来 3 小时没有词到期',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: upcoming! > 0
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                        fontWeight: upcoming! > 0 ? FontWeight.w600 : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
     );
