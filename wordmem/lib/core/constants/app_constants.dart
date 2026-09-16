@@ -9,7 +9,7 @@ class AppConstants {
   ///
   /// ⚠️ 仅作兜底/元数据用：UI 展示请优先用 PackageInfo 实时读取
   /// （about_page / me_page），避免发版时忘记同步此处。
-  static const String appVersion = '2.1.5';
+  static const String appVersion = '2.1.6';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。
@@ -50,6 +50,18 @@ class AppConstants {
 
   // 批量导入
   static const int batchImportChunkSize = 500;
+
+  // 熟练词抽检（v2.1.6：已掌握词的防遗忘抽检机制）
+  /// 单次抽检词量
+  static const int masteredQuizCount = 5;
+  /// 抽取随机窗口倍数：窗口 = 词量 × 倍数（越大越随机，越小越公平）
+  static const int masteredQuizWindowFactor = 3;
+  /// 答对后到下次抽检的间隔（天）
+  static const int masteredQuizCorrectDays = 15;
+  /// 答错（第 1 次）后的复检间隔
+  static const Duration masteredQuizWrongDelay = Duration(days: 3);
+  /// 用户跳过后重新进入候选池的间隔（短于答对，保证跳过的词更快被补测）
+  static const Duration masteredQuizSkipDelay = Duration(days: 7);
 
   // SharedPreferences keys
   static const String keyFirstLaunch = 'first_launch';

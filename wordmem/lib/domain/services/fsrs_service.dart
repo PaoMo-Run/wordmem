@@ -62,6 +62,12 @@ class FsrsCard {
         elapsedDays: (m['elapsed_days'] as num?)?.toDouble() ?? 0,
         scheduledDays: (m['scheduled_days'] as num?)?.toDouble() ?? 0,
       );
+
+  /// 加速态（仅**未掌握**时有意义）：0 = 无跳过 ｜ 1 = 已跳过 T2 ｜ 2 = 已跳过 T2+T4。
+  ///
+  /// v2.1.6：`difficulty` 字段按 `card_state` 承载两套**互斥**语义——
+  /// 未掌握 → 跳过加速态；已掌握 → 熟练词抽检的失败计数。此处统一封装读取。
+  int get skipState => state == CardState.mastered ? 0 : difficulty.toInt();
 }
 
 /// 排程结果
@@ -92,19 +98,24 @@ class ScheduleResult {
 /// 状态映射：reps==0 → 新词，reps 1~3 → 学习中（分钟/小时级），
 ///           reps 4~7 → 复习中，完成第 7 周期 → 已掌握（mastered）。
 class FsrsService {
-  /// 经典艾宾浩斯 7 周期复习间隔（固定节点，不做目标记忆率微调）
-  static const List<Duration> ebbinghausIntervals = [
-    Duration(minutes: 45),
+  /// T0–T7 八节点固定时间线（v2.1.6 用户确认版）。
+  ///
+  /// 下标 i = 「从 T{i} 到 T{i+1} 的等待时间」：
+  ///   T0 -1h-> T1 -3h-> T2 -5h-> T3 -12h-> T4 -1d-> T5 -2d-> T6 -2d-> T7
+  /// 累计：1h / 4h / 9h / 21h / 45h / 93h / 141h（约 5.9 天走完全程）。
+  static const List<Duration> t0t7Intervals = [
+    Duration(hours: 1),
     Duration(hours: 3),
-    Duration(hours: 8),
+    Duration(hours: 5),
+    Duration(hours: 12),
     Duration(days: 1),
     Duration(days: 2),
-    Duration(days: 4),
-    Duration(days: 7),
+    Duration(days: 2),
   ];
 
-  /// 完成全部周期后标记掌握的远期保险时间（正常查询已排除 mastered）
-  static const Duration _masteredFuse = Duration(days: 3650);
+  // v2.1.6：已移除原 `_masteredFuse`（掌握后把 due 推到 10 年后）。
+  // 现在掌握即 due = now，词进入「熟练词抽检」池——由 due 的推进量管理
+  // 抽检间隔（答对 15 天 / 答错 3 天 / 跳过 7 天，见 AppConstants）。
 
   late double _desiredRetention;
 
@@ -127,10 +138,11 @@ class FsrsService {
   // ============================================================
 
   /// 由复习周期返回基础间隔
-  Duration _intervalForReps(int reps) {
+  /// （公开访问：熟练词抽检降级时需要按节点档位重排 due）
+  Duration intervalForReps(int reps) {
     if (reps <= 0) return Duration.zero;
-    final idx = math.min(reps - 1, ebbinghausIntervals.length - 1);
-    return ebbinghausIntervals[idx];
+    final idx = math.min(reps - 1, t0t7Intervals.length - 1);
+    return t0t7Intervals[idx];
   }
 
   /// 艾宾浩斯遗忘曲线 R(t) = e^(-t/S)
@@ -154,46 +166,56 @@ class FsrsService {
       return ScheduleResult(card: card, retrievability: retrievability);
     }
 
+    // ── T0–T7 推进规则（v2.1.6 用户确认版）──
+    //
+    // reps = 下一个要执行的节点序号（0..8；跳过时跳号）
+    // skipState（复用 difficulty，未掌握时的语义）= 加速态：
+    //   0 = 无跳过 ｜ 1 = 已跳过 T2 ｜ 2 = 已跳过 T2 + T4
+    //
+    // 规则：
+    // - **所有测验结果都会推进**到下一个节点（取消"重做当前节点"）
+    // - **只有三环节全对（easy）才解锁跳过**
+    // - T1 全对 → 跳过 T2，直达 T3
+    // - T3 全对（且 T1 全对过）→ 跳过 T4，直达 T5
+    // - T1 未全对 → 全程不再允许跳过
+    // - 超期不改变档位、不补做错过的节点；due 按本次实际测验时刻顺延
     var reps = card.reps;
-    var lapses = card.lapses;
+    var skipState = card.skipState;
+    final allCorrect = rating == ReviewRating.easy;
 
-    if (reps == 0) {
-      // 新词首次复习：先进入第 1 周期（45 分钟）
-      reps = 1;
-      if (rating == ReviewRating.again) {
-        lapses++;
-        // 立即重做第 1 周期
-      } else if (rating == ReviewRating.easy) {
-        reps = 3; // 首次就很轻松，直接跳到 8 小时
-      }
+    final int next;
+    final Duration interval;
+    if (reps <= 0) {
+      next = 1; // T0 完成 → T1
+      interval = intervalForReps(1); // 1h
+    } else if (reps == 1 && allCorrect) {
+      // T1 全对 → 跳过 T2。被跳过的档位仍占时间：3h(T2) + 5h(T3) = 8h
+      next = 3;
+      skipState = 1;
+      interval = t0t7Intervals[1] + t0t7Intervals[2];
+    } else if (reps == 3 && skipState >= 1 && allCorrect) {
+      // T3 全对（且 T1 全对过）→ 跳过 T4，直接按 T5 档等待（1 天，
+      // 不累计 T4 的 12h）—— 这是「答得好就更快」的真正落点
+      next = 5;
+      skipState = 2;
+      interval = t0t7Intervals[4];
     } else {
-      switch (rating) {
-        case ReviewRating.again:
-          lapses++;
-          // 重做当前周期：reps 不变
-          break;
-        case ReviewRating.hard:
-          // 保持当前周期
-          break;
-        case ReviewRating.good:
-          reps += 1;
-          break;
-        case ReviewRating.easy:
-          reps += 2; // 跳过一档加速
-          break;
-      }
+      // T3 未全对但此前已跳过 T2 → **撤销跳过资格**：
+      // 回到「不跳过」的映射与路线（用户确认的语义）
+      if (reps == 3 && skipState == 1) skipState = 0;
+      next = reps + 1;
+      interval = intervalForReps(next);
     }
 
-    // 完成全部 7 个周期且本轮回答正确 → 永久掌握
-    if (reps >= ebbinghausIntervals.length &&
-        rating != ReviewRating.again) {
+    // 走完 T7 → 永久掌握，转入「熟练词抽检」池
+    if (next > t0t7Intervals.length) {
       final mastered = card.copyWith(
         state: CardState.mastered,
-        stability: ebbinghausIntervals.length.toDouble(),
-        difficulty: 0,
-        reps: ebbinghausIntervals.length,
-        lapses: lapses,
-        due: now.add(_masteredFuse),
+        stability: t0t7Intervals.length.toDouble(),
+        difficulty: 0, // 语义切换为「抽检失败计数」，从 0 开始
+        reps: t0t7Intervals.length,
+        lapses: card.lapses,
+        due: now, // 立即进入抽检池
         lastReview: now,
         elapsedDays: elapsedDays,
         scheduledDays: 0,
@@ -201,24 +223,17 @@ class FsrsService {
       return ScheduleResult(card: mastered, retrievability: retrievability);
     }
 
-    reps = reps.clamp(1, ebbinghausIntervals.length);
-
-    final interval = _intervalForReps(reps);
-    // again：重做当前周期，1 分钟后即可再次复习
-    final newDue = rating == ReviewRating.again
-        ? now.add(const Duration(minutes: 1))
-        : now.add(interval);
     final newStability = interval.inSeconds / 86400.0;
-    // reps 1~3 是分钟/小时级短间隔（学习中），reps>=4 进入天级（复习中）
-    final newState = reps <= 3 ? CardState.learning : CardState.review;
+    // T1~T3 为小时级（学习中），T4 起进入天级（复习中）
+    final newState = next <= 3 ? CardState.learning : CardState.review;
 
     final newCard = card.copyWith(
       state: newState,
       stability: newStability,
-      difficulty: 0,
-      reps: reps,
-      lapses: lapses,
-      due: newDue,
+      difficulty: skipState.toDouble(), // 未掌握时承载加速态
+      reps: next,
+      lapses: card.lapses,
+      due: now.add(interval),
       lastReview: now,
       elapsedDays: elapsedDays,
       scheduledDays: newStability,

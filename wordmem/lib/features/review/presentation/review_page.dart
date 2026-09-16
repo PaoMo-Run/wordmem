@@ -10,6 +10,7 @@ import '../../../infra/sync/webdav_client.dart';
 import '../../../domain/models/review_rating.dart';
 import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
+import 'mastered_quiz_page.dart';
 import 'widgets/quiz_cards.dart';
 
 /// 今日复习页面（原"开始复习"）
@@ -49,6 +50,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   final Map<int, bool> _enToZhResults = {};
   final Map<int, bool> _chooseResults = {};
   final Map<int, bool> _dictResults = {};
+
+  // v2.1.6：本轮熟练词抽检中答错的词（保留完整数据，用于汇入错词重测）
+  final List<Map<String, dynamic>> _quizWrongWords = [];
 
   // 四选一选项缓存（wordId -> options）
   final Map<int, List<WordOption>> _optionsCache = {};
@@ -351,17 +355,120 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       // 错题加练为纯练习：不重复提交复习排程
       if (!_isRetryMode) _commitAllReviews();
       _clearTempSave(); // 本组已完成，清临时存档
-      if (_groupIndex < _groupCount - 1) {
-        _startGroup(_groupIndex + 1);
-      } else {
-        setState(() => _stage = _Stage.done);
-        // v2.1.5：全部复习完成后询问是否上传学习数据（已配置 WebDAV 时）
-        if (!_isRetryMode) {
-          WidgetsBinding.instance
-              .addPostFrameCallback((_) => _maybePromptUpload());
-        }
+      _finishGroup();
+    }
+  }
+
+  /// 本组收尾（v2.1.6）：抽检询问 → 上传询问 → 进入下一组 / 结束整轮。
+  ///
+  /// 上传询问以**每个 50 词组结束为节点**（末尾不足 50 的单组也算）；
+  /// 用户若选择继续抽检，抽检结束后同样会回到这里追问一次。
+  /// 错题重测为纯练习，不重复询问上传。
+  Future<void> _finishGroup() async {
+    // 1) 询问是否抽检已掌握词（含"暂不"时的记账处理）
+    await _maybeOfferMasteredQuiz();
+    if (!mounted) return;
+
+    // 2) 每组结束后询问是否上传学习数据（仅在已配置 WebDAV 时弹出）
+    if (!_isRetryMode) {
+      await _maybePromptUpload();
+      if (!mounted) return;
+    }
+
+    // 3) 进入下一组 / 结束整轮
+    if (_groupIndex < _groupCount - 1) {
+      _startGroup(_groupIndex + 1);
+    } else {
+      setState(() => _stage = _Stage.done);
+      if (_isRetryMode) {
+        // 错词重测收尾：抽检错词若仍答错 → 第 2 次失败 → 退回 T3
+        _applyQuizRetryOutcome();
       }
     }
+  }
+
+  /// 询问是否对已掌握词做抽检（v2.1.6）。
+  ///
+  /// 即使用户选「暂不」，也会把抽到的词**记账**（due 推后 7 天）——
+  /// 既避免下次又抽到同一批，也避免它们被误认为「已测过」而长期搁置。
+  Future<void> _maybeOfferMasteredQuiz() async {
+    if (_isRetryMode) return; // 错题加练环节不抽检
+    final repo = ref.read(reviewRepositoryProvider);
+    final List<Map<String, dynamic>> words;
+    try {
+      words = repo.pickMasteredQuizWords();
+    } catch (_) {
+      return;
+    }
+    if (words.isEmpty || !mounted) return;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('抽检已掌握的词？'),
+        content: Text(
+          '从已掌握的词里随机抽了 ${words.length} 个做默写，检测是否还记得。'
+          '答错的词会进入本轮错词重测。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('暂不'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('开始抽检'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    if (go != true) {
+      // 记账：跳过也推后 due，防止下次重复抽到同一批
+      repo.skipMasteredQuiz(words.map((w) => w['id'] as int).toList());
+      return;
+    }
+
+    final wrongIds = await Navigator.of(context).push<List<int>>(
+      MaterialPageRoute(builder: (_) => MasteredQuizPage(words: words)),
+    );
+    if (!mounted || wrongIds == null || wrongIds.isEmpty) return;
+    setState(() {
+      _quizWrongWords.addAll(
+        words.where((w) => wrongIds.contains(w['id'] as int)),
+      );
+    });
+  }
+
+  /// 错词重测结束后的抽检词结算（v2.1.6）：
+  /// - 重测中仍有环节答错 → 第 2 次失败 → **立即**移出 mastered，退回 T3
+  /// - 重测全对 → **不洗白**：保留「一次答错」标记，只把复检窗口推到 3 天后；
+  ///   若 3 天后的复检再错，同样会退回 T3
+  ///
+  /// ⚠️ v2.1.6 修复：结算完成后必须**清空** `_quizWrongWords`。
+  /// 否则结果页会把这些抽检错词反复计入「重做错题」，用户点一次就再重测一轮，
+  /// 形成「重做错题 → 仍是这几词 → 再重做」的无限循环。
+  void _applyQuizRetryOutcome() {
+    if (_quizWrongWords.isEmpty) return;
+    final repo = ref.read(reviewRepositoryProvider);
+    for (final w in _quizWrongWords) {
+      final id = w['id'] as int;
+      final stillWrong = _enToZhResults[id] == false ||
+          _chooseResults[id] == false ||
+          _dictResults[id] == false;
+      try {
+        if (stillWrong) {
+          repo.demoteMasteredToT3(id);
+        } else {
+          repo.holdMasteredQuizWrongMark(id);
+        }
+      } catch (_) {
+        // 单条失败不影响其余
+      }
+    }
+    // 结算完毕即清空——防止结果页再次把它们计入「重做错题」而陷入循环
+    if (mounted) setState(() => _quizWrongWords.clear());
   }
 
   /// 复习完成后询问是否上传学习数据（仅在已配置 WebDAV 时弹出）。
@@ -603,14 +710,22 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   /// 重做全部错题：以错题重建队列从头再来一轮。
+  /// v2.1.6 起同时并入**熟练词抽检**中答错的词。
   /// 纯加练——不重复提交复习排程，也不写临时存档。
   void _retryWrong() {
-    final wrong = _wrongIds;
-    if (wrong.isEmpty) return;
-    final byId = {for (final w in _allQueue) w['id'] as int: w};
+    final stageWrong = _wrongIds;
+    final quizWrong =
+        _quizWrongWords.map((w) => w['id'] as int).toList();
+    final byId = {
+      for (final w in _allQueue) w['id'] as int: w,
+      // 抽检错词不在 _allQueue（它们是 mastered 词），单独并入
+      for (final w in _quizWrongWords) w['id'] as int: w,
+    };
     final rows = [
-      for (final id in wrong)
+      for (final id in stageWrong)
         if (byId[id] != null) byId[id]!,
+      for (final id in quizWrong)
+        if (!stageWrong.contains(id) && byId[id] != null) byId[id]!,
     ];
     if (rows.isEmpty) return;
     setState(() {
@@ -774,7 +889,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     final theme = Theme.of(context);
     // v2.1.5：分组后统计整轮（全部组）
     final total = _allQueue.length;
-    final wrongCount = _wrongIds.length;
+    // v2.1.6：错词数 = 三环节错词 + 熟练词抽检错词
+    final wrongCount = _wrongIds.length + _quizWrongWords.length;
 
     return Scaffold(
       appBar: AppBar(

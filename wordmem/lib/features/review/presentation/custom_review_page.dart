@@ -7,6 +7,7 @@ import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/word_option.dart';
 import '../../../core/theme/colors.dart';
+import 'mastered_quiz_page.dart';
 import 'widgets/quiz_cards.dart';
 
 /// 自选复习页面
@@ -166,6 +167,28 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     });
     _prepareStages(_queue);
     _skipUnavailableEnToZh();
+  }
+
+  /// 熟练词抽检（v2.1.6）：独立入口——从已掌握词中随机抽 5 个做默写。
+  /// 与自选复习的纯练习不同，抽检结果会回写卡片状态（答对 due+15 天、
+  /// 答错保留 mastered 并 due+3 天）。
+  Future<void> _startMasteredQuiz() async {
+    final repo = ref.read(reviewRepositoryProvider);
+    final List<Map<String, dynamic>> words;
+    try {
+      words = repo.pickMasteredQuizWords();
+    } catch (err) {
+      _toast('读取已掌握词失败: $err');
+      return;
+    }
+    if (words.isEmpty) {
+      _toast('还没有已掌握的词，先完成几轮复习吧');
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<List<int>>(
+      MaterialPageRoute(builder: (_) => MasteredQuizPage(words: words)),
+    );
   }
 
   /// 预生成选项：选单词四选一（看中文选英文）+ 英译汉选择题（看英文选中文）
@@ -521,6 +544,17 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                 icon: Icons.play_arrow,
                 label: '开始自选复习',
                 tinted: true,
+              ),
+              const SizedBox(height: 16),
+              // v2.1.6：熟练词抽检——独立于自选复习的纯练习流程，会回写卡片状态
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: _startMasteredQuiz,
+                  icon: const Icon(Icons.verified_outlined, size: 18),
+                  label: const Text('熟练词抽检'),
+                ),
               ),
             ],
           ),

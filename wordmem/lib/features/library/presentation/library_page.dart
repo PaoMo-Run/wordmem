@@ -31,6 +31,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   String? _tagFilter;
   bool _favoriteOnly = false;
   bool _quizOnly = false;
+  /// 排序方式（v2.1.6）：'created' 添加时间（默认）/ 'due' 到期时间 / 'word' 字母
+  String? _sortBy = 'created';
   List<Map<String, dynamic>> _words = [];
   /// 词典命中结果（词典搜索模式填充，点击跳转添加页）
   List<DictWord> _dictResults = [];
@@ -94,6 +96,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           stateFilter: _stateFilter,
           tagFilter: _tagFilter,
           favoriteOnly: _favoriteOnly,
+          sortBy: _sortBy,
         );
         final total = repo.getAllWords(limit: 100000).length;
         setState(() {
@@ -129,12 +132,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     String? tagFilter,
     bool? favoriteOnly,
     bool? quizOnly,
+    String? sortBy,
   }) {
     setState(() {
       _stateFilter = stateFilter;
       _tagFilter = tagFilter;
       _favoriteOnly = favoriteOnly ?? false;
       _quizOnly = quizOnly ?? false;
+      _sortBy = sortBy ?? 'created';
     });
     _loadWords();
   }
@@ -227,6 +232,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               tagFilter: _tagFilter,
               favoriteOnly: _favoriteOnly,
               quizOnly: _quizOnly,
+              sortBy: _sortBy,
               onChanged: _onFilterChanged,
             ),
           // 正文视图：按搜索范围分流

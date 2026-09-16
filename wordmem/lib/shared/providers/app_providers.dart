@@ -45,6 +45,14 @@ import '../../infra/ai/openai_compatible_service.dart';
 /// LibraryPage 等页面通过 ref.listen 监听此值实现自动刷新。
 final wordListVersionProvider = StateProvider<int>((ref) => 0);
 
+/// 未来 3 小时内将到期的词数（首页提示，v2.1.6）。
+/// 依赖 wordListVersionProvider，词库发生变化时自动刷新。
+final upcomingDueCountProvider = FutureProvider<int>((ref) async {
+  ref.watch(wordListVersionProvider);
+  final dao = ref.watch(wordDaoProvider);
+  return dao.countDueWithin(const Duration(hours: 3));
+});
+
 /// 近义词群 / 词根群版本号：群挑战通过、群组迁移、手动移出词林/词根后自增，
 /// WordGroupMemoryPage 通过 ref.listen 监听此值实现自动刷新。
 final groupVersionProvider = StateProvider<int>((ref) => 0);

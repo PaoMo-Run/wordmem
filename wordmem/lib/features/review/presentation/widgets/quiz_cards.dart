@@ -224,6 +224,20 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // v2.1.6：作答后补充该选项对应的英文单词——与「选单词」题型对称，
+          // 让**干扰项也呈现中英对照**，便于复盘时加深记忆
+          if (answered && opt.definition.isNotEmpty && opt.word.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 2),
+              child: Text(
+                opt.word,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
         ],
       ),
     );

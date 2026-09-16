@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/colors.dart';
+import '../../domain/models/review_rating.dart';
 import 'glass.dart';
 
 /// 空状态组件
@@ -90,18 +91,37 @@ class LoadingIndicator extends StatelessWidget {
   }
 }
 
-/// 掌握状态颜色（7 周期方案：已掌握为显式状态）
-Color masteryColor(String cardState, int reps, int lapses) {
+/// 熟练度档位颜色（v2.1.6：按 T0–T7 节点映射的 4 档）
+///
+/// `difficulty` 在未掌握时承载跳过加速态；1 档最浅 → 4 档最深。
+Color masteryColor(
+  String cardState,
+  int reps,
+  int lapses, {
+  double difficulty = 0,
+}) {
   if (cardState == 'mastered') return AppColors.statusMastered;
-  if (cardState == 'new' && reps == 0) return AppColors.statusNew;
-  if (cardState == 'learning' || cardState == 'relearning') return AppColors.statusLearning;
-  return AppColors.statusReview;
+  final level = MasteryStatus.levelOf(
+    reps: reps,
+    skipState: difficulty.toInt(),
+  );
+  return switch (level) {
+    1 => AppColors.statusNew,
+    2 => AppColors.statusLearning,
+    3 => AppColors.statusReview,
+    _ => AppColors.statusMastered,
+  };
 }
 
-/// 掌握状态文字
-String masteryLabel(String cardState, int reps, int lapses) {
-  if (cardState == 'mastered') return '已掌握';
-  if (cardState == 'new' && reps == 0) return '新词';
-  if (cardState == 'learning' || cardState == 'relearning') return '学习中';
-  return '熟悉';
+/// 熟练度档位文字：小试牛刀 / 初出茅庐 / 炉火纯青 / 登峰造极
+String masteryLabel(
+  String cardState,
+  int reps,
+  int lapses, {
+  double difficulty = 0,
+}) {
+  if (cardState == 'mastered') return MasteryStatus.level4.label;
+  return MasteryStatus.fromLevel(
+    MasteryStatus.levelOf(reps: reps, skipState: difficulty.toInt()),
+  ).label;
 }

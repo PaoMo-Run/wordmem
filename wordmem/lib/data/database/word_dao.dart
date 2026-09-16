@@ -112,6 +112,54 @@ class WordDao {
     );
   }
 
+  // ───────────────── 熟练词抽检（v2.1.6） ─────────────────
+
+  /// 抽检候选：取「冷却期已过 且 最久未抽」的前 [windowSize] 个。
+  /// 数量不足 [fallbackLimit] 时放宽时间条件补齐（池子太小时的降级路径）。
+  ///
+  /// 排序键 due 在抽检语义下表示「下次可抽检时间」——被抽中后推后，
+  /// 因此 due 最早的即最久未被抽到的词，保证不会有词被漏掉。
+  List<Map<String, dynamic>> pickMasteredQuizCandidates({
+    required int windowSize,
+    required int fallbackLimit,
+  }) {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final ready = _v
+        .select(
+          '''SELECT * FROM user_words
+         WHERE card_state = 'mastered' AND due <= ?
+         ORDER BY due ASC LIMIT ?''',
+          [now, windowSize],
+        )
+        .map((r) => r as Map<String, dynamic>)
+        .toList();
+    if (ready.length >= fallbackLimit) return ready;
+
+    return _v
+        .select(
+          '''SELECT * FROM user_words
+         WHERE card_state = 'mastered'
+         ORDER BY due ASC LIMIT ?''',
+          [fallbackLimit],
+        )
+        .map((r) => r as Map<String, dynamic>)
+        .toList();
+  }
+
+  /// 抽检状态回写：只更新 due（下次可抽检时间）与 difficulty（失败计数），
+  /// 不触碰 FSRS 的 stability / reps / lapses 等排期字段。
+  void updateMasteredQuizState(
+    int id, {
+    required String due,
+    required double difficulty,
+  }) {
+    _v.execute(
+      '''UPDATE user_words SET due = ?, difficulty = ?, updated_at = ?
+         WHERE id = ?''',
+      [due, difficulty, DateTime.now().toUtc().toIso8601String(), id],
+    );
+  }
+
   /// 删除单词
   void delete(int id) {
     _v.execute('DELETE FROM user_words WHERE id = ?', [id]);
@@ -154,6 +202,20 @@ class WordDao {
     args.add(limit);
     args.add(offset);
     return _v.select(sql, args);
+  }
+
+  /// 未来 [window] 内将到期的词数（首页提示用，v2.1.6）
+  ///
+  /// 只统计「此刻尚未到期、但将在 window 内到期」的词：不含已到期项，
+  /// 也不含已掌握词（它们的 due 表示"下次可抽检时间"，语义不同）。
+  int countDueWithin(Duration window) {
+    final now = DateTime.now().toUtc();
+    final row = _v.select(
+      """SELECT COUNT(*) as c FROM user_words
+         WHERE due > ? AND due <= ? AND card_state != 'mastered'""",
+      [now.toIso8601String(), now.add(window).toIso8601String()],
+    ).first;
+    return row['c'] as int;
   }
 
   /// 获取待复习单词（due <= now，排除新词与已掌握）

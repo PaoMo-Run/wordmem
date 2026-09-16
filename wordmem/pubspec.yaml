@@ -1,7 +1,7 @@
 name: wordmem
 description: "词记 - 可离线运行的英语记单词 App（FSRS 间隔复习）"
 publish_to: 'none'
-version: 2.1.5+23
+version: 2.1.6+24
 
 environment:
   sdk: ^3.6.0

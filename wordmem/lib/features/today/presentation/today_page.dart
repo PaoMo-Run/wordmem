@@ -96,13 +96,15 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
     }
 
     final stats = _stats!;
+    // v2.1.6：未来 3 小时内将到期的词数（首页提示）
+    final upcoming = ref.watch(upcomingDueCountProvider).valueOrNull ?? 0;
 
     return RefreshIndicator(
       onRefresh: () async => _loadData(),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 116),
         children: [
-          _TodayHero(stats: stats, streak: _streak),
+          _TodayHero(stats: stats, streak: _streak, upcoming: upcoming),
           const SizedBox(height: 14),
           _PrimaryAction(stats: stats),
           const SizedBox(height: 26),
@@ -123,8 +125,14 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
 class _TodayHero extends StatelessWidget {
   final TodayStats stats;
   final int streak;
+  /// 未来 3 小时内将到期的词数（v2.1.6）
+  final int upcoming;
 
-  const _TodayHero({required this.stats, required this.streak});
+  const _TodayHero({
+    required this.stats,
+    required this.streak,
+    this.upcoming = 0,
+  });
 
   String get _greeting {
     final hour = DateTime.now().hour;
@@ -138,7 +146,12 @@ class _TodayHero extends StatelessWidget {
 
   String _subtitle(int due) {
     if (stats.totalWords == 0) return '词库还是空的，先加几个单词';
-    if (due > 0) return '还有 $due 个单词到期';
+    if (due > 0) {
+      return upcoming > 0
+          ? '还有 $due 个单词到期 · 未来 3 小时还有 $upcoming 个会到期'
+          : '还有 $due 个单词到期';
+    }
+    if (upcoming > 0) return '未来 3 小时有 $upcoming 个单词会到期';
     if (stats.reviewedToday > 0) return '今天过了 ${stats.reviewedToday} 个，收工';
     return '今天没有到期的单词';
   }

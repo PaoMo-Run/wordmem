@@ -33,8 +33,12 @@ class WordListTile extends StatelessWidget {
     final lapses = (word['lapses'] as int?) ?? 0;
     final due = word['due'] as String?;
 
-    final statusColor = masteryColor(cardState, reps, lapses);
-    final statusLabel = masteryLabel(cardState, reps, lapses);
+    // v2.1.6：熟练度按 T0–T7 节点映射（difficulty 未掌握时 = 跳过加速态）
+    final difficulty = (word['difficulty'] as num?)?.toDouble() ?? 0;
+    final statusColor =
+        masteryColor(cardState, reps, lapses, difficulty: difficulty);
+    final statusLabel =
+        masteryLabel(cardState, reps, lapses, difficulty: difficulty);
 
     final displayDef = customDef ?? note;
     final dueDate = due != null ? DateTime.tryParse(due) : null;
@@ -131,7 +135,9 @@ class WordListTile extends StatelessWidget {
               ),
             ),
             // 下次复习时间
-            if (dueDate != null)
+            // v2.1.6：已掌握词进入「抽检池」，due 表示"下次可抽检时间"，
+            // 不再作为"下次复习"展示，避免误导
+            if (dueDate != null && cardState != 'mastered')
               Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: Text(

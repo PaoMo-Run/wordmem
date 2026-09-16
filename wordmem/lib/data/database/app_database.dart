@@ -54,6 +54,9 @@ class AppDatabase {
     // 4.5 复习算法迁移（艾宾浩斯 7 周期）：老 8 档 reps → 新 7 档
     _migrateSchedule();
 
+    // 4.6 熟练词抽检迁移（v2.1.6）：已掌握词的 due 从「10 年后」拉回当前
+    _migrateMasteredQuiz();
+
     // 5. 初始化默认数据
     _initDefaultData();
 
@@ -250,6 +253,29 @@ END;
         '''INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at''',
         ['sched_ebbinghaus_v7', '1', DateTime.now().toUtc().toIso8601String()],
+      );
+    } catch (_) {
+      // 迁移失败不阻塞启动，下次启动重试
+    }
+  }
+
+  /// 熟练词抽检迁移（v2.1.6）：把已掌握词的 due 从「10 年后」拉回当前，
+  /// 使其进入抽检候选池。仅执行一次（app_settings 打标），幂等安全。
+  void _migrateMasteredQuiz() {
+    try {
+      final done = _vocabDb.select(
+        "SELECT COUNT(*) as c FROM app_settings WHERE key = 'quiz_mastered_v1'",
+      ).first['c'] as int;
+      if (done > 0) return;
+
+      _vocabDb.execute(
+        "UPDATE user_words SET due = ? WHERE card_state = 'mastered'",
+        [DateTime.now().toUtc().toIso8601String()],
+      );
+      _vocabDb.execute(
+        '''INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at''',
+        ['quiz_mastered_v1', '1', DateTime.now().toUtc().toIso8601String()],
       );
     } catch (_) {
       // 迁移失败不阻塞启动，下次启动重试

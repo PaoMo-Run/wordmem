@@ -588,7 +588,8 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                         _InfoRow(
                             label: '稳定性',
                           value: stability > 0 ? '${stability.toStringAsFixed(1)} 天' : '-'),
-                        if (due != null)
+                        // v2.1.6：已掌握词进入「抽检池」，due 不再表示"下次复习"
+                        if (due != null && cardState != 'mastered')
                           _InfoRow(
                             label: '下次复习',
                             value: StringUtils.formatDue(DateTime.tryParse(due))),

@@ -7,11 +7,14 @@ class FilterBar extends StatelessWidget {
   final bool favoriteOnly;
   /// 仅看短文测试错词（分组视图）
   final bool quizOnly;
+  /// 排序方式（v2.1.6）：'created' 添加时间 / 'due' 到期时间 / 'word' 字母
+  final String? sortBy;
   final void Function({
     String? stateFilter,
     String? tagFilter,
     bool? favoriteOnly,
     bool? quizOnly,
+    String? sortBy,
   }) onChanged;
 
   const FilterBar({
@@ -20,8 +23,15 @@ class FilterBar extends StatelessWidget {
     this.tagFilter,
     this.favoriteOnly = false,
     this.quizOnly = false,
+    this.sortBy,
     required this.onChanged,
   });
+
+  String _sortLabel(String? s) => switch (s) {
+        'due' => '按到期时间',
+        'word' => '按字母',
+        _ => '按添加时间',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +78,21 @@ class FilterBar extends StatelessWidget {
             avatar: const Icon(Icons.flight_takeoff, size: 16),
             onSelected: (v) =>
                 onChanged(tagFilter: v ? '航空专业词' : null),
+          ),
+          // 排序方式（v2.1.6：新增「按到期时间」）
+          PopupMenuButton<String>(
+            tooltip: '排序方式',
+            initialValue: sortBy ?? 'created',
+            onSelected: (v) => onChanged(sortBy: v),
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: 'created', child: Text('按添加时间（新→旧）')),
+              PopupMenuItem(value: 'due', child: Text('按到期时间（近→远）')),
+              PopupMenuItem(value: 'word', child: Text('按字母 A→Z')),
+            ],
+            child: Chip(
+              avatar: const Icon(Icons.sort, size: 16),
+              label: Text(_sortLabel(sortBy)),
+            ),
           ),
         ],
       ),
