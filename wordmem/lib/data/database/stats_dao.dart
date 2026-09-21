@@ -1,5 +1,6 @@
 import 'package:sqlite3/sqlite3.dart';
 import 'app_database.dart';
+import 'word_dao.dart';
 import '../../domain/models/stats.dart';
 
 /// 统计 DAO
@@ -20,15 +21,21 @@ class StatsDao {
       [startOfDay],
     ).first['c'] as int;
 
-    // 到期待学的新词（与下面的到期待复习互斥，两者相加即待处理总数）
+    // 到期待学的新词 + 到期待复习（两者互斥，相加 = 复习队列里会出现的词数）
+    //
+    // v2.1.7 修复：口径统一走 WordDao 的常量。原 dueReview 只有
+    // 「reps > 0 AND card_state != 'new'」——**漏掉了 mastered 的排除**，
+    // 而复习队列（getReviewQueue）是排除 mastered 的。于是已掌握词的 due
+    // 一旦落在当前之前（抽检答对/答错/跳过都会推进 due，自愈也会拉到当前），
+    // 首页就会出现「按钮显示 N 个词，点进去暂无待复习单词」。
     final dueNew = _v.select(
-      'SELECT COUNT(*) as c FROM user_words WHERE due <= ? AND reps = 0',
+      'SELECT COUNT(*) as c FROM user_words WHERE ${WordDao.dueNewWhere}',
       [now.toIso8601String()],
     ).first['c'] as int;
 
     final dueReview = _v.select(
-      'SELECT COUNT(*) as c FROM user_words WHERE due <= ? AND reps > 0 AND card_state != ?',
-      [now.toIso8601String(), 'new'],
+      'SELECT COUNT(*) as c FROM user_words WHERE ${WordDao.dueReviewWhere}',
+      [now.toIso8601String()],
     ).first['c'] as int;
 
     final reviewedToday = _v.select(

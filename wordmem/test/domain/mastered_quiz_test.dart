@@ -4,52 +4,153 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wordmem/core/constants/app_constants.dart';
 import 'package:wordmem/data/repositories/review_repository.dart';
 
-// 熟练词抽检机制单测（v2.1.6）。
+// 抽检 / 出题顺序机制单测。
 //
-// 锁定三条不变量：
-// 1. 同轮不重复 —— 一次抽取的词互不相同
-// 2. 短期不重复 —— 被抽中的词 due 推后，不会在紧接着的下一轮重现
+// 不变量：
+// 1. 冷却期内不重复 —— 被抽中的词 due 推后，冷却期内不得再次出现
+// 2. 时间权重 0.5 —— 时间倾向仍存在，但不再是硬排序（v2.1.7 恢复随机化）
 // 3. 长期不遗漏 —— 连续抽取足够多次后，池中每个词都被抽到过
 void main() {
   Map<String, dynamic> w(int id, int due) => {'id': id, 'due': due};
 
-  group('pickRandom（窗口内随机抽取）', () {
-    test('抽取数量正确且同轮互不重复', () {
-      final candidates = [for (var i = 0; i < 15; i++) w(i, i)];
-      final picked = ReviewRepository.pickRandom(
-        candidates,
-        count: 5,
-        random: Random(7),
-      );
+  List<int> idsOf(List<Map<String, dynamic>> rows) =>
+      [for (final r in rows) r['id'] as int];
 
-      expect(picked.length, 5);
+  group('epochMillisOf（时间解析）', () {
+    test('ISO 串可解析；缺失/脏数据排到最后（约定 double.maxFinite）', () {
       expect(
-        picked.map((e) => e['id']).toSet().length,
-        5,
-        reason: '同一轮内不得重复抽到同一个词',
+        ReviewRepository.epochMillisOf('2026-09-17T04:00:00.000Z'),
+        DateTime.parse('2026-09-17T04:00:00.000Z').millisecondsSinceEpoch,
+      );
+      expect(ReviewRepository.epochMillisOf(null), double.maxFinite);
+      expect(ReviewRepository.epochMillisOf('not-a-date'), double.maxFinite);
+    });
+  });
+
+  group('blendByTimeWeight（时间权重混合打分）', () {
+    // 30 个词：id 越大 = 添加越晚（时间上越"优先"）
+    final rows = <Map<String, dynamic>>[
+      for (var i = 0; i < 30; i++)
+        {
+          'id': i,
+          'created_at': DateTime.utc(2026, 9, 1)
+              .add(Duration(hours: i))
+              .toIso8601String(),
+        },
+    ];
+    double timeOf(Map<String, dynamic> r) =>
+        ReviewRepository.epochMillisOf(r['created_at']);
+
+    test('timeWeight = 1.0 → 完全按时间（等价于 v2.1.6 的硬排序）', () {
+      final ordered = ReviewRepository.blendByTimeWeight(
+        rows,
+        timeOf: timeOf,
+        timeWeight: 1.0,
+        ascending: false,
+      );
+      expect(idsOf(ordered), [for (var i = 29; i >= 0; i--) i]);
+    });
+
+    test('w = 0.5 时不再恒等于时间序 —— 随机化回归（v2.1.6 的 bug 是顺序恒等于时间序）',
+        () {
+      final pureTime = [for (var i = 29; i >= 0; i--) i].join(',');
+      final rnd = Random(20260917);
+      var diffRounds = 0;
+      for (var i = 0; i < 20; i++) {
+        final order = idsOf(ReviewRepository.blendByTimeWeight(
+          rows,
+          timeOf: timeOf,
+          ascending: false,
+          random: rnd,
+        )).join(',');
+        if (order != pureTime) diffRounds++;
+      }
+      expect(
+        diffRounds,
+        greaterThan(15),
+        reason: '20 轮里绝大多数顺序都应与纯时间序不同，否则等于没有随机化',
       );
     });
 
-    test('只从给定候选（窗口）中取，不会引入窗口外的词', () {
-      final candidates = [for (var i = 0; i < 15; i++) w(i, i)];
-      final ids = candidates.map((e) => e['id'] as int).toSet();
+    test('w = 0.5 时时间倾向仍保留：最近添加的词平均位置明显靠前，但不是恒定第一', () {
+      final rnd = Random(7);
+      var newestPos = 0;
+      var oldestPos = 0;
+      var newestIsFirst = 0;
+      const rounds = 40;
 
-      for (var round = 0; round < 50; round++) {
-        final picked = ReviewRepository.pickRandom(candidates, count: 5);
-        expect(picked.every((e) => ids.contains(e['id'] as int)), isTrue);
+      for (var i = 0; i < rounds; i++) {
+        final ordered = ReviewRepository.blendByTimeWeight(
+          rows,
+          timeOf: timeOf,
+          ascending: false,
+          random: rnd,
+        );
+        final ids = idsOf(ordered);
+        newestPos += ids.indexOf(29);
+        oldestPos += ids.indexOf(0);
+        if (ids.first == 29) newestIsFirst++;
+      }
+
+      expect(newestPos / rounds, lessThan(oldestPos / rounds),
+          reason: '最新添加的词必须仍被时间倾向照顾');
+      expect(newestIsFirst, lessThan(rounds),
+          reason: '不能永远是第一，否则时间权重等于 1.0');
+    });
+
+    test('不可解析的时间排到最后，且不受排序方向影响（取负会把它顶到队首）', () {
+      final withDirty = <Map<String, dynamic>>[
+        {'id': 1, 'created_at': '2026-09-01T00:00:00.000Z'},
+        {'id': 2, 'created_at': null},
+        {'id': 3, 'created_at': 'garbage'},
+        {'id': 4, 'created_at': '2026-09-05T00:00:00.000Z'},
+      ];
+      double t(Map<String, dynamic> r) =>
+          ReviewRepository.epochMillisOf(r['created_at']);
+
+      // 升序方向：脏数据在最后
+      final asc = idsOf(ReviewRepository.blendByTimeWeight(
+        withDirty,
+        timeOf: t,
+        timeWeight: 1.0,
+      ));
+      expect(asc, [1, 4, 2, 3]);
+
+      // 降序方向：脏数据**仍然**在最后，不能因为取负而跑到最前面
+      final desc = idsOf(ReviewRepository.blendByTimeWeight(
+        withDirty,
+        timeOf: t,
+        timeWeight: 1.0,
+        ascending: false,
+      ));
+      expect(desc, [4, 1, 2, 3]);
+      expect(desc.sublist(2), [2, 3], reason: '脏数据必须在队尾');
+    });
+
+    test('无论权重多少都不漏词、不重复、不改元素个数', () {
+      final rnd = Random(11);
+      for (final weight in [0.0, 0.5, 1.0]) {
+        final ordered = ReviewRepository.blendByTimeWeight(
+          rows,
+          timeOf: timeOf,
+          timeWeight: weight,
+          ascending: false,
+          random: rnd,
+        );
+        expect(ordered.length, rows.length);
+        expect(idsOf(ordered).toSet().length, rows.length, reason: '不得重复');
+        expect(idsOf(ordered).toSet(), {for (var i = 0; i < 30; i++) i},
+            reason: '不得漏词');
       }
     });
 
-    test('候选不足时返回全部；空候选返回空', () {
+    test('边界：空表与单元素直接返回', () {
       expect(
-        ReviewRepository.pickRandom([w(1, 0), w(2, 1)], count: 5).length,
-        2,
-      );
-      expect(ReviewRepository.pickRandom(const [], count: 5), isEmpty);
-    });
-
-    test('count <= 0 时返回空', () {
-      expect(ReviewRepository.pickRandom([w(1, 0)], count: 0), isEmpty);
+          ReviewRepository.blendByTimeWeight(const [], timeOf: (_) => 0),
+          isEmpty);
+      final one = [w(1, 0)];
+      expect(idsOf(ReviewRepository.blendByTimeWeight(one, timeOf: (_) => 0)),
+          [1]);
     });
   });
 
@@ -57,14 +158,35 @@ void main() {
     final t = DateTime.utc(2026, 9, 16, 12);
 
     test('答对 15 天 / 答错 3 天 / 跳过 7 天', () {
-      expect(ReviewRepository.dueAfterCorrect(t).difference(t).inDays, 15);
+      expect(
+        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 5).inDays,
+        15,
+      );
       expect(ReviewRepository.dueAfterWrong(t).difference(t).inDays, 3);
       expect(ReviewRepository.dueAfterSkip(t).difference(t).inDays, 7);
     });
 
+    test('池子不足 5 个词时答对冷却期缩短到 7 天（v2.1.7）', () {
+      expect(
+        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 4).inDays,
+        7,
+      );
+      expect(
+        ReviewRepository.cooldownAfterCorrect(
+                masteredPoolSize: AppConstants.masteredQuizCount)
+            .inDays,
+        15,
+      );
+      expect(
+        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 0).inDays,
+        7,
+      );
+    });
+
     test('跳过的间隔必须短于答对 —— 否则跳过的词会被长期搁置', () {
       final skip = ReviewRepository.dueAfterSkip(t).difference(t);
-      final correct = ReviewRepository.dueAfterCorrect(t).difference(t);
+      final correct =
+          ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 99);
       expect(skip < correct, isTrue);
     });
 
@@ -75,25 +197,23 @@ void main() {
     });
   });
 
-  group('公平性模拟（最久未抽优先 + 窗口随机）', () {
+  group('公平性模拟（时间权重 0.5）', () {
     const perRound = AppConstants.masteredQuizCount;
-    final windowSize = perRound * AppConstants.masteredQuizWindowFactor;
 
     test('500 个词 × 每轮抽 5：足够轮次后每个词都被抽到过（不漏词）', () {
       const n = 500;
       final rnd = Random(20260916);
-      // 初始 due 用随机值，模拟"各词掌握时间不同"
       final items = [for (var i = 0; i < n; i++) w(i, rnd.nextInt(1000))];
       final picked = <int>{};
 
-      for (var round = 0; round < 200; round++) {
-        items.sort((a, b) => (a['due'] as int).compareTo(b['due'] as int));
-        final chosen = ReviewRepository.pickRandom(
-          items.take(windowSize).toList(),
-          count: perRound,
+      for (var round = 0; round < 300; round++) {
+        final ordered = ReviewRepository.blendByTimeWeight(
+          items,
+          timeOf: (r) => (r['due'] as int).toDouble(),
           random: rnd,
         );
-        // due 推后 = 排到队尾（等价于真实实现的 due = now + 间隔）
+        final chosen = ordered.take(perRound).toList();
+        // due 推后 = 排到队尾（等价于真实的 due = now + 间隔）
         final maxDue = items.map((e) => e['due'] as int).reduce(max);
         for (final c in chosen) {
           picked.add(c['id'] as int);
@@ -108,33 +228,32 @@ void main() {
       );
     });
 
-    test('短期不重复：池子足够大时相邻两轮不会抽到同一批词', () {
+    test('相邻两轮不会抽到同一批词（抽中的词 due 被推后）', () {
       const n = 100;
       final rnd = Random(42);
       final items = [for (var i = 0; i < n; i++) w(i, 0)];
       List<int>? lastPicked;
 
       for (var round = 0; round < 10; round++) {
-        items.sort((a, b) => (a['due'] as int).compareTo(b['due'] as int));
-        final chosen = ReviewRepository.pickRandom(
-          items.take(windowSize).toList(),
-          count: perRound,
+        final ordered = ReviewRepository.blendByTimeWeight(
+          items,
+          timeOf: (r) => (r['due'] as int).toDouble(),
           random: rnd,
         );
-        final ids = chosen.map((e) => e['id'] as int).toList();
+        final ids = [for (final e in ordered.take(perRound)) e['id'] as int];
 
         if (lastPicked != null) {
           final overlap = ids.where(lastPicked.contains).length;
           expect(
             overlap,
             0,
-            reason: '池子 $n > 窗口 $windowSize 时，相邻两轮不应有重叠',
+            reason: '池子 $n 远大于单轮 $perRound 时，相邻两轮不应重叠',
           );
         }
         lastPicked = ids;
 
         final maxDue = items.map((e) => e['due'] as int).reduce(max);
-        for (final c in chosen) {
+        for (final c in ordered.take(perRound)) {
           c['due'] = maxDue + 1;
         }
       }
@@ -147,8 +266,7 @@ void main() {
       expect(ReviewRepository.shouldDemoteOnQuizWrong(1), isTrue);
     });
 
-    test('重测答对走的是复检窗口（3 天），而不是洗白',
-        () {
+    test('重测答对走的是复检窗口（3 天），而不是洗白', () {
       // holdMasteredQuizWrongMark 使用 dueAfterWrong —— 语义上等同于
       // "保留失败标记 + 3 天后复检"，因此其间隔必须仍是 3 天
       final t = DateTime.utc(2026, 9, 16, 12);
@@ -157,10 +275,113 @@ void main() {
   });
 
   group('抽检常量', () {
-    test('单次抽检 5 词、窗口 3 倍 —— 与设计稿一致', () {
+    test('单次抽检 5 词、答对 15 天、时间权重 0.5 —— 与用户定值一致', () {
       expect(AppConstants.masteredQuizCount, 5);
-      expect(AppConstants.masteredQuizWindowFactor, 3);
       expect(AppConstants.masteredQuizCorrectDays, 15);
+      expect(AppConstants.orderTimeWeight, 0.5);
+    });
+  });
+
+  // v2.1.7 修复回归：「冷却期内的词不得被返回」。
+  // 原实现有一条 fallback——冷却期内候选不足 5 个时丢掉 due 条件硬凑数量，
+  // 导致"已掌握词刚好 5 个"的用户每一轮抽检都抽到同一批词。
+  group('冷却期不变量（v2.1.7 修复回归）', () {
+    final now = DateTime.utc(2026, 9, 17, 12);
+    Map<String, dynamic> d(int id, Duration offset) => {
+          'id': id,
+          'due': now.add(offset).toIso8601String(),
+        };
+    double dueOf(Map<String, dynamic> r) =>
+        ReviewRepository.epochMillisOf(r['due']);
+
+    test('冷却期内的词一律不放行：池子只有 5 个词时返回空，不再硬凑', () {
+      // 复现场景：5 个已掌握词刚被抽过一轮（due 推到 15 天后）
+      final mastered = [
+        for (var i = 0; i < 5; i++) d(i, const Duration(days: 15)),
+      ];
+
+      final ready = ReviewRepository.filterQuizReady(mastered, now: now);
+      expect(ready, isEmpty, reason: '冷却期内的词必须被全部挡住');
+      expect(
+        ReviewRepository.blendByTimeWeight(ready, timeOf: dueOf),
+        isEmpty,
+        reason: '本次应当不抽检，而不是无视 due 把同一批词还回来',
+      );
+    });
+
+    test('只有冷却期已过的词进入候选，冷却中的词不参与抽取', () {
+      final mastered = [
+        d(1, const Duration(hours: -1)), // 已过冷却
+        d(2, Duration.zero), // 恰好到期 → 可抽
+        d(3, const Duration(days: 15)), // 冷却中
+      ];
+
+      final ready = ReviewRepository.filterQuizReady(mastered, now: now);
+      expect(idsOf(ready), [1, 2]);
+
+      final picked = ReviewRepository.blendByTimeWeight(
+        ready,
+        timeOf: dueOf,
+        random: Random(1),
+      );
+      expect(idsOf(picked).toSet(), {1, 2});
+      expect(
+        picked.any((e) => e['id'] == 3),
+        isFalse,
+        reason: '冷却期内的词绝不能出现在抽检结果里',
+      );
+    });
+
+    test('due 缺失或不可解析的词视为不可抽（宁可漏抽也不重复抽）', () {
+      expect(
+        ReviewRepository.isQuizReady({'id': 9, 'due': null}, now: now),
+        isFalse,
+      );
+      expect(
+        ReviewRepository.isQuizReady({'id': 9, 'due': 'not-a-date'}, now: now),
+        isFalse,
+      );
+      expect(
+        ReviewRepository.isQuizReady(d(9, Duration.zero), now: now),
+        isTrue,
+      );
+    });
+
+    test('真机场景模拟：5 个已掌握词、答对冷却 15 天 → 15 天内只应抽到一次', () {
+      final items = [for (var i = 0; i < 5; i++) d(i, Duration.zero)];
+      final rnd = Random(20260917);
+      var days = 0;
+      var offered = 0;
+
+      for (var day = 0; day < 15; day++) {
+        days++;
+        final ready = ReviewRepository.filterQuizReady(
+          items,
+          now: now.add(Duration(days: day)),
+        );
+        final ordered = ReviewRepository.blendByTimeWeight(
+          ready,
+          timeOf: dueOf,
+          random: rnd,
+        );
+        final picked = ordered.take(AppConstants.masteredQuizCount).toList();
+        if (picked.isEmpty) continue;
+        offered++;
+        for (final c in picked) {
+          // 等价于 submitMasteredQuiz(correct: true)：due = 当前时刻 + 冷却期
+          c['due'] = now
+              .add(Duration(days: day))
+              .add(ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 5))
+              .toIso8601String();
+        }
+      }
+
+      expect(days, 15);
+      expect(
+        offered,
+        1,
+        reason: '5 个词走完一轮后进入冷却期，修复前这里会是 15（每天重复同一批）',
+      );
     });
   });
 }

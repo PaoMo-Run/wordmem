@@ -58,28 +58,11 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
   void _loadSynonymGroups() {
     try {
       final repo = ref.read(wordRepositoryProvider);
-      final words = repo.getAllWords(limit: 100000);
-      final groups = <Map<String, dynamic>>[];
-      final seen = <String>{};
-      for (final w in words.take(40)) {
-        final syns = repo.findSynonyms(w['id'] as int);
-        if (syns.length < 2) continue;
-        final members = <String>[
-          w['word'] as String,
-          ...syns.map((s) => s['word'] as String),
-        ];
-        // 群 ID 使用语义核心词（稳定）：成员/种子变化不影响 ID，熟悉度不丢
-        final id = repo.coreDefinition(
-            w['custom_def'] as String?, w['word'] as String);
-        if (seen.contains(id) || groups.length >= 30) continue;
-        seen.add(id);
-        groups.add({
-          'id': id,
-          'seed': w['word'],
-          'words': members,
-          'def': id,
-        });
-      }
+      // v2.1.7：建群逻辑移到 WordRepository.buildSynonymGroups()。
+      // 原实现在这里只拿**最新添加的 40 个词**当种子（words.take(40)），
+      // 而近义词匹配本身是全库扫描的 —— 词库 < 40 词时它等于全库（所以早期有群），
+      // 涨到 285 词后窗口只剩 14%，聚类词全在窗口外 → 群数为 0（真机反馈）。
+      final groups = repo.buildSynonymGroups();
       // 旧 ID（成员列表串）→ 新 ID（核心词）的熟悉度数据迁移（一次性）
       repo.migrateSynonymGroupMastery(groups);
       if (mounted) setState(() => _synonymGroups = groups);

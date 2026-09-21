@@ -33,12 +33,9 @@ class WordListTile extends StatelessWidget {
     final lapses = (word['lapses'] as int?) ?? 0;
     final due = word['due'] as String?;
 
-    // v2.1.6：熟练度按 T0–T7 节点映射（difficulty 未掌握时 = 跳过加速态）
-    final difficulty = (word['difficulty'] as num?)?.toDouble() ?? 0;
-    final statusColor =
-        masteryColor(cardState, reps, lapses, difficulty: difficulty);
-    final statusLabel =
-        masteryLabel(cardState, reps, lapses, difficulty: difficulty);
+    // v2.1.8：熟练度只按 T0–T7 节点进度映射（跳过机制已取消，difficulty 不参与）
+    final statusColor = masteryColor(cardState, reps, lapses);
+    final statusLabel = masteryLabel(cardState, reps, lapses);
 
     final displayDef = customDef ?? note;
     final dueDate = due != null ? DateTime.tryParse(due) : null;

@@ -168,9 +168,92 @@ class WordRepository {
   /// 查找单词的近义词（多级匹配）
   /// L1 中文词林义类层 + L2 释义中文关键词重叠层，任一命中即候选，
   /// 再经用户黑名单过滤，按相似度降序返回。
-  /// 收紧规则（2026-08-21 词典更新后）：
+  /// 近义词群（v2.1.7 重做；原先内联在 WordGroupMemoryPage 里）。
+  ///
+  /// **为什么重做**：旧实现是 `for (final w in words.take(40))` —— 只拿
+  /// **最新添加的 40 个词**当种子，而近义词匹配本身是全库扫描的。词库 ≤40 词时
+  /// 窗口等于全库（所以早期能出群），涨到 285 词后窗口只覆盖 14%，聚类词
+  /// （base/basic/basis、vast/enormous/immense…）全在窗口外 → 群数为 0，
+  /// 「近义词群」整块空白（真机反馈 2026-09-17）。
+  ///
+  /// 本版三点：
+  /// - 种子扫**全部**词库，不再截断
+  /// - 用倒排索引（核心词 → 词下标）算重叠：释义解析从 O(n²) 次降到 O(n) 次，
+  ///   上千词的库也是毫秒级，因此才敢扫全库
+  /// - 命中阈值见 [SynonymDetector.minSharedKeywords]；每群至少 [minMembers] 个近义词
+  ///
+  /// 返回结构（与旧实现一致，页面与熟悉度迁移依赖这三个键）：
+  /// `{'id': 核心词, 'seed': 种子词, 'words': [种子, ...成员], 'def': 核心词}`。
+  /// 按成员数降序返回，大簇优先展示。
+  List<Map<String, dynamic>> buildSynonymGroups({
+    int maxGroups = 30,
+    int minMembers = 2,
+  }) {
+    // 1) 参与匹配的词：排除词组（含空格）与空释义
+    final words = _wordDao.getAll(limit: 100000).where((w) {
+      final text = (w['word'] as String? ?? '').trim();
+      return text.isNotEmpty &&
+          !text.contains(' ') &&
+          ((w['custom_def'] as String?) ?? '').trim().isNotEmpty;
+    }).toList();
+
+    // 2) 一次遍历：解析核心词 + 建倒排索引
+    final keywordsOf = <int, Set<String>>{};
+    final byKeyword = <String, List<int>>{};
+    for (var i = 0; i < words.length; i++) {
+      final kws = SynonymDetector.extractKeywords(
+          (words[i]['custom_def'] as String?) ?? '');
+      if (kws.isEmpty) continue;
+      keywordsOf[i] = kws;
+      for (final k in kws) {
+        (byKeyword[k] ??= <int>[]).add(i);
+      }
+    }
+
+    // 3) 逐种子统计重叠数（走倒排索引，不做逐对解析）
+    final groups = <Map<String, dynamic>>[];
+    final seenIds = <String>{};
+    for (var i = 0; i < words.length; i++) {
+      final kws = keywordsOf[i];
+      if (kws == null) continue;
+
+      final overlap = <int, int>{};
+      for (final k in kws) {
+        for (final j in byKeyword[k] ?? const <int>[]) {
+          if (j == i) continue;
+          overlap[j] = (overlap[j] ?? 0) + 1;
+        }
+      }
+      final members = <int>[
+        for (final e in overlap.entries)
+          if (e.value >= SynonymDetector.minSharedKeywords) e.key,
+      ];
+      if (members.length < minMembers) continue;
+
+      final w = words[i];
+      // 群 ID 使用语义核心词（稳定）：成员/种子变化不影响 ID，熟悉度不丢
+      final id =
+          coreDefinition(w['custom_def'] as String?, w['word'] as String);
+      if (seenIds.contains(id)) continue;
+      seenIds.add(id);
+      groups.add({
+        'id': id,
+        'seed': w['word'],
+        'words': [w['word'], ...members.map((j) => words[j]['word'])],
+        'def': id,
+      });
+      if (groups.length >= maxGroups) break;
+    }
+
+    // 4) 成员多的群排前面（大簇更有复习价值）
+    groups.sort((a, b) =>
+        (b['words'] as List).length.compareTo((a['words'] as List).length));
+    return groups;
+  }
+
+  /// 近义词判定规则（2026-08-21 收紧 → v2.1.7 回调）：
   /// - 词组（含空格）不参与近义词匹配，只对单个英文单词生效
-  /// - L2 释义关键词重叠须 ≥2；仅 1 个重叠时须同时词林义类命中，避免泛化词误配
+  /// - L2 释义关键词重叠 ≥ [SynonymDetector.minSharedKeywords]，或词林义类命中且有重叠
   List<Map<String, dynamic>> findSynonyms(int wordId) {
     final word = _wordDao.getById(wordId);
     if (word == null) return [];
@@ -197,8 +280,9 @@ class WordRepository {
       final inter = keywords.intersection(wKeywords);
       final cilinMatch =
           SynonymDictSource.instance.areSynonymSets(keywords, wKeywords);
-      // 收紧：释义重叠 ≥2，或词林命中且释义有 ≥1 重叠
-      if (inter.length >= 2 || (cilinMatch && inter.isNotEmpty)) {
+      // 命中：释义重叠 ≥ minSharedKeywords（v2.1.7 由 2 降为 1），或词林义类命中且有重叠
+      if (inter.length >= SynonymDetector.minSharedKeywords ||
+          (cilinMatch && inter.isNotEmpty)) {
         result.add(w);
       }
     }

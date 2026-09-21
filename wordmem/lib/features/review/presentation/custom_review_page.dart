@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/colors.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
+import '../../../shared/widgets/quiz_countdown.dart';
 import '../../../domain/models/word_option.dart';
-import '../../../core/theme/colors.dart';
 import 'mastered_quiz_page.dart';
 import 'widgets/quiz_cards.dart';
 
@@ -44,6 +46,36 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   // v2.1.5：错题加练模式——纯练习，不写临时存档
   bool _isRetryMode = false;
 
+  // ═══════════ v2.1.8：与今日复习同步的流程（乱序 / 本组统计 / 每组重测） ═══════════
+
+  /// 临时存档格式版本（v2 = 带 stageSeq）
+  static const int _saveVersion = 2;
+
+  /// 出题顺序：`_queue` 的下标排列。三环节各自洗牌，避免位置记忆。
+  List<int> _stageSeq = [];
+
+  /// 本组统计快照（含重测追加行）
+  _GroupOutcome? _groupOutcome;
+  /// 重测期间暂存的本组统计
+  _GroupOutcome? _retryOutcome;
+  /// 本组是否已走完 `_endOfGroup()` 编排
+  bool _groupFinalized = false;
+
+  // 重测期间的正式结果快照（结束后还原，保证统计页是"练习前"口径）
+  Map<int, bool>? _snapEn;
+  Map<int, bool>? _snapChoose;
+  Map<int, bool>? _snapDict;
+  List<Map<String, dynamic>>? _snapAllQueue;
+  List<Map<String, dynamic>>? _snapQueue;
+
+  /// 三环节各词是否超时（v2.1.8 评分用；自选复习为纯练习，分数只在统计页展示）
+  final Map<int, bool> _enToZhTimeouts = {};
+  final Map<int, bool> _chooseTimeouts = {};
+  final Map<int, bool> _dictTimeouts = {};
+
+  /// 作答倒计时状态句柄
+  final _cdKey = GlobalKey<QuizCountdownState>();
+
   @override
   void initState() {
     super.initState();
@@ -53,15 +85,28 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
 
   int get _groupCount => (_allQueue.length / _groupSize).ceil();
 
+  /// **唯一口径（v2.1.8）**：本组词的 id 集合。
+  /// 统计 / 错题集合全部基于它，**禁止按 `_queue` 下标切片**（乱序后下标与词不对应）。
+  Set<int> get _groupIds => {for (final w in _queue) w['id'] as int};
+
+  /// 出题顺序取值（空 = 恒等序，兼容旧存档）
+  int _seqAt(int i) {
+    if (_stageSeq.isEmpty) return i;
+    if (i < 0 || i >= _stageSeq.length) return i;
+    return _stageSeq[i];
+  }
+
+  /// 生成一份洗牌后的出题顺序
+  static List<int> _buildSeq(int n) {
+    final seq = List<int>.generate(n, (i) => i);
+    seq.shuffle();
+    return seq;
+  }
+
   // —— 统计（v2.1.5：改为按词记录 + 派生，支持左滑返回重答） ——
   final Map<int, bool> _enToZhResults = {};
   final Map<int, bool> _chooseResults = {};
   final Map<int, bool> _dictResults = {};
-
-  int get _enToZhCorrect => _enToZhResults.values.where((v) => v).length;
-  int get _enToZhAnsweredCount => _enToZhResults.length;
-  int get _chooseCorrect => _chooseResults.values.where((v) => v).length;
-  int get _dictationCorrect => _dictResults.values.where((v) => v).length;
 
   final Map<int, List<WordOption>> _optionsCache = {};
   // 英译汉选择题选项缓存（wordId -> 中文释义选项）
@@ -164,6 +209,10 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       _queue = _allQueue.sublist(start, end);
       _index = 0;
       _stage = _QuizStage.enToZh;
+      // v2.1.8：分组顺序不变，只重洗组内三环节的出题次序
+      _stageSeq = _buildSeq(_queue.length);
+      _groupFinalized = false;
+      _groupOutcome = null;
     });
     _prepareStages(_queue);
     _skipUnavailableEnToZh();
@@ -209,17 +258,30 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     });
   }
 
+  /// 跳过无中文释义的词（英译汉环节无法出题）。
+  /// v2.1.8：按 `_stageSeq` 取词——第 k 题是 `_queue[_seqAt(k)]`。
   void _skipUnavailableEnToZh() {
-    while (_index < _queue.length &&
-        !(_enToZhAvailable[_word['id'] as int] ?? false)) {
+    while (_index < _stageSeq.length &&
+        !(_enToZhAvailable[_queue[_seqAt(_index)]['id'] as int] ?? false)) {
       _index++;
     }
-    if (_index >= _queue.length && _phase == _Phase.quiz) {
-      setState(() => _stage = _QuizStage.chooseWord);
+    if (_index >= _stageSeq.length && _phase == _Phase.quiz) {
+      _enterChooseWord();
     }
   }
 
-  Map<String, dynamic> get _word => _queue[_index];
+  /// 进入「选单词」环节：重洗一份出题顺序（v2.1.8）
+  void _enterChooseWord() {
+    setState(() {
+      _index = 0;
+      _stage = _QuizStage.chooseWord;
+      _stageSeq = _buildSeq(_queue.length);
+    });
+    _autoSave();
+  }
+
+  /// 当前词。v2.1.8：经 `_stageSeq` 映射，`_index` 是"第几题"而非 `_queue` 下标。
+  Map<String, dynamic> get _word => _queue[_seqAt(_index)];
   String get _currentWord => _word['word'] as String;
   String get _currentDef => ((_word['custom_def'] as String?) ?? '').trim();
   List<WordOption> get _currentOptions =>
@@ -236,60 +298,70 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   // 保证作答后答案反馈能正常展示（若在此前进，卡片因 ValueKey 变化
   // 被重建，内部反馈态丢失，表现为跳过答案直接进入下一题）。
   void _enToZhAnswered(bool correct) {
-    setState(() => _enToZhResults[_word['id'] as int] = correct);
+    final id = _word['id'] as int;
+    setState(() {
+      _enToZhResults[id] = correct;
+      _enToZhTimeouts[id] = _cdKey.currentState?.isOvertime ?? false;
+    });
     _autoSave();
   }
 
   void _advanceEnToZh() {
-    if (_index < _queue.length - 1) {
+    if (_index < _stageSeq.length - 1) {
       setState(() => _index++);
       _skipUnavailableEnToZh();
-      if (_index >= _queue.length && _stage == _QuizStage.enToZh) {
-        setState(() => _stage = _QuizStage.chooseWord);
-      }
+      if (_index >= _stageSeq.length) _enterChooseWord();
     } else {
-      setState(() {
-        _index = 0;
-        _stage = _QuizStage.chooseWord;
-      });
+      _enterChooseWord();
     }
     _autoSave();
   }
 
   void _chooseAnswered(bool correct) {
-    setState(() => _chooseResults[_word['id'] as int] = correct);
+    final id = _word['id'] as int;
+    setState(() {
+      _chooseResults[id] = correct;
+      _chooseTimeouts[id] = _cdKey.currentState?.isOvertime ?? false;
+    });
     _autoSave();
   }
 
   void _advanceChoose() {
-    if (_index < _queue.length - 1) {
+    if (_index < _stageSeq.length - 1) {
       setState(() => _index++);
     } else {
+      // 进入「默写」环节：再洗一次出题顺序（v2.1.8）
       setState(() {
         _index = 0;
         _stage = _QuizStage.dictation;
+        _stageSeq = _buildSeq(_queue.length);
       });
     }
     _autoSave();
   }
 
   void _dictationAnswered(bool correct) {
-    setState(() => _dictResults[_word['id'] as int] = correct);
+    final id = _word['id'] as int;
+    setState(() {
+      _dictResults[id] = correct;
+      _dictTimeouts[id] = _cdKey.currentState?.isOvertime ?? false;
+    });
     _autoSave();
   }
 
-  void _advanceDictation() {
-    if (_index < _queue.length - 1) {
+  Future<void> _advanceDictation() async {
+    if (_index < _stageSeq.length - 1) {
       setState(() => _index++);
       _autoSave();
-    } else {
-      _clearTempSave(); // 本组已完成，清临时存档
-      if (_groupIndex < _groupCount - 1) {
-        _startGroup(_groupIndex + 1);
-      } else {
-        setState(() => _phase = _Phase.result);
-      }
+      return;
     }
+    if (_isRetryMode) {
+      // 错题检验（纯练习）走完 → 回到本组统计页
+      _finishRetry();
+      return;
+    }
+    _clearTempSave(); // 本组已完成，清临时存档
+    await _endOfGroup();
   }
 
   // ============================================================
@@ -315,15 +387,22 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     await prefs.setString(
       _tempSaveKey,
       jsonEncode({
+        'saveVersion': _saveVersion,
         'savedAt': DateTime.now().toIso8601String(),
         'allQueueIds': _allQueue.map((w) => w['id'] as int).toList(),
         'groupIndex': _groupIndex,
         'index': _index,
         'stage': _stage.name,
         'rangeLabel': _rangeLabel,
+        // v2.1.8：出题顺序与 index 必须成对还原
+        'stageSeq': _stageSeq,
+        'groupFinalized': _groupFinalized,
         'enToZh': _enToZhResults.map((k, v) => MapEntry('$k', v)),
         'choose': _chooseResults.map((k, v) => MapEntry('$k', v)),
         'dict': _dictResults.map((k, v) => MapEntry('$k', v)),
+        'enToZhOt': _enToZhTimeouts.map((k, v) => MapEntry('$k', v)),
+        'chooseOt': _chooseTimeouts.map((k, v) => MapEntry('$k', v)),
+        'dictOt': _dictTimeouts.map((k, v) => MapEntry('$k', v)),
       }),
     );
   }
@@ -417,6 +496,10 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           (s) => s.name == (saved['stage'] as String? ?? 'enToZh'),
           orElse: () => _QuizStage.enToZh,
         );
+        // v2.1.8：先还原 stageSeq、再定 index（`_index` 是 `_stageSeq` 的下标）。
+        // 旧档无 stageSeq → 恒等序 + 保留 index（旧版没洗牌，语义等价，不丢进度）。
+        _stageSeq = _decodeSeq(saved['stageSeq'], queue.length);
+        _groupFinalized = saved['groupFinalized'] == true;
         _enToZhResults
           ..clear()
           ..addAll(_decodeBoolMap(saved['enToZh']));
@@ -426,6 +509,15 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
         _dictResults
           ..clear()
           ..addAll(_decodeBoolMap(saved['dict']));
+        _enToZhTimeouts
+          ..clear()
+          ..addAll(_decodeBoolMap(saved['enToZhOt']));
+        _chooseTimeouts
+          ..clear()
+          ..addAll(_decodeBoolMap(saved['chooseOt']));
+        _dictTimeouts
+          ..clear()
+          ..addAll(_decodeBoolMap(saved['dictOt']));
         _phase = _Phase.quiz;
       });
       _prepareStages(_queue);
@@ -441,6 +533,20 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       ..remove(-1);
   }
 
+  /// 还原出题顺序：缺失 / 长度不符 / 不是排列 → 恒等序（旧档兼容：不崩、不洗牌）
+  static List<int> _decodeSeq(dynamic raw, int n) {
+    final identity = List<int>.generate(n, (i) => i);
+    if (raw is! List || raw.length != n) return identity;
+    final out = <int>[];
+    final seen = <int>{};
+    for (final e in raw) {
+      final v = e is int ? e : int.tryParse('$e');
+      if (v == null || v < 0 || v >= n || !seen.add(v)) return identity;
+      out.add(v);
+    }
+    return out;
+  }
+
   // ============================================================
   //  构建
   // ============================================================
@@ -449,8 +555,10 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   Widget build(BuildContext context) {
     return switch (_phase) {
       _Phase.setup => _buildSetup(),
-      _Phase.quiz => _buildQuiz(),
-      _Phase.result => _buildResult(),
+      // v2.1.8：本组统计页（每组末都出现）取代原来的整轮结果页
+      _Phase.quiz => _stage == _QuizStage.groupStats
+          ? _buildGroupStats()
+          : _buildQuiz(),
     };
   }
 
@@ -591,13 +699,18 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   bool _canGoBackInStage() {
     switch (_stage) {
       case _QuizStage.enToZh:
+        // v2.1.8：下标须经 _stageSeq 映射（第 k 题是 _queue[_seqAt(k)]）
         for (var i = _index - 1; i >= 0; i--) {
-          if (_enToZhAvailable[_queue[i]['id'] as int] ?? false) return true;
+          if (_enToZhAvailable[_queue[_seqAt(i)]['id'] as int] ?? false) {
+            return true;
+          }
         }
         return false;
       case _QuizStage.chooseWord:
       case _QuizStage.dictation:
         return _index > 0;
+      case _QuizStage.groupStats:
+        return false;
     }
   }
 
@@ -605,34 +718,44 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     switch (_stage) {
       case _QuizStage.enToZh:
         var i = _index - 1;
-        while (i >= 0 && !(_enToZhAvailable[_queue[i]['id'] as int] ?? false)) {
+        while (i >= 0 &&
+            !(_enToZhAvailable[_queue[_seqAt(i)]['id'] as int] ?? false)) {
           i--;
         }
         if (i < 0) return;
         setState(() {
           _index = i;
-          _enToZhResults.remove(_queue[i]['id'] as int);
+          final id = _queue[_seqAt(i)]['id'] as int;
+          _enToZhResults.remove(id);
+          _enToZhTimeouts.remove(id); // 重答时重新计时
         });
         _autoSave();
       case _QuizStage.chooseWord:
         if (_index == 0) return;
         setState(() {
           _index--;
-          _chooseResults.remove(_queue[_index]['id'] as int);
+          final id = _queue[_seqAt(_index)]['id'] as int;
+          _chooseResults.remove(id);
+          _chooseTimeouts.remove(id);
         });
         _autoSave();
       case _QuizStage.dictation:
         if (_index == 0) return;
         setState(() {
           _index--;
-          _dictResults.remove(_queue[_index]['id'] as int);
+          final id = _queue[_seqAt(_index)]['id'] as int;
+          _dictResults.remove(id);
+          _dictTimeouts.remove(id);
         });
         _autoSave();
+      case _QuizStage.groupStats:
+        break;
     }
   }
 
-  /// 右上角「下一题」：与「跳过」同义（未作答即跳过，不计对错）
+  /// 右上角「下一题」：与「跳过」同义（未作答即跳过，按答错计分）
   void _advanceCurrent() {
+    _recordSkipTimeout();
     switch (_stage) {
       case _QuizStage.enToZh:
         _advanceEnToZh();
@@ -640,11 +763,48 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
         _advanceChoose();
       case _QuizStage.dictation:
         _advanceDictation();
+      case _QuizStage.groupStats:
+        break;
+    }
+  }
+
+  /// 未作答就前进时补记超时（跳过路径不经过卡片回调，漏记会少扣那 1 分）
+  void _recordSkipTimeout() {
+    if (_stage == _QuizStage.groupStats) return;
+    if (_currentAnswered) return;
+    final id = _word['id'] as int;
+    final overtime = _cdKey.currentState?.isOvertime ?? false;
+    switch (_stage) {
+      case _QuizStage.enToZh:
+        _enToZhTimeouts[id] = overtime;
+      case _QuizStage.chooseWord:
+        _chooseTimeouts[id] = overtime;
+      case _QuizStage.dictation:
+        _dictTimeouts[id] = overtime;
+      case _QuizStage.groupStats:
+        break;
+    }
+  }
+
+  /// 当前题是否已作答（v2.1.8：卡片内「跳过」按钮已删，未作答时强调「下一题」）
+  bool get _currentAnswered {
+    final id = _word['id'] as int;
+    switch (_stage) {
+      case _QuizStage.enToZh:
+        return _enToZhResults.containsKey(id);
+      case _QuizStage.chooseWord:
+        return _chooseResults.containsKey(id);
+      case _QuizStage.dictation:
+        return _dictResults.containsKey(id);
+      case _QuizStage.groupStats:
+        // 统计页没有"当前题"，此处只为穷尽枚举；调用点也不会在统计页触发
+        return true;
     }
   }
 
   /// 题目导航行（v2.1.5）：左「上一题」/ 中「自动保存」标记 / 右「下一题」。
   /// 进度在每步作答后自动落盘，不再需要手动点「存档」。
+  /// v2.1.8：未作答时把「下一题」染成主色——它是当前唯一的"不会就跳过"入口。
   Widget _quizNavRow() {
     return Row(
       children: [
@@ -665,6 +825,12 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
         const Spacer(),
         TextButton.icon(
           onPressed: _advanceCurrent,
+          style: _currentAnswered
+              ? null
+              : TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
           icon: const Icon(Icons.arrow_forward_ios, size: 15),
           label: const Text('下一题'),
         ),
@@ -689,7 +855,6 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           options: _enToZhOptionsCache[_word['id'] as int] ?? const [],
           onAnswered: _enToZhAnswered,
           onNext: _advanceEnToZh,
-          onSkip: _advanceEnToZh,
           isLast: _index == total - 1,
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
@@ -704,7 +869,6 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           options: _currentOptions,
           onAnswered: _chooseAnswered,
           onNext: _advanceChoose,
-          onSkip: _advanceChoose,
           isLast: _index == total - 1,
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
@@ -719,12 +883,14 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
           showHint: true,
           onAnswered: _dictationAnswered,
           onNext: _advanceDictation,
-          onSkip: _advanceDictation,
           isLast: _index == total - 1,
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
               : null,
         );
+      case _QuizStage.groupStats:
+        title = '';
+        card = const SizedBox.shrink();
     }
 
     return Scaffold(
@@ -758,6 +924,16 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               _quizNavRow(),
+                              // v2.1.8：题干上方的作答倒计时（默写 8s、其余 5s）
+                              QuizCountdown(
+                                key: _cdKey,
+                                limit: _stage == _QuizStage.dictation
+                                    ? AppConstants.quizTimeLimitDictation
+                                    : AppConstants.quizTimeLimitChoice,
+                                questionKey:
+                                    '${_stage.name}-$_index-${_word['id']}',
+                                frozen: _currentAnswered,
+                              ),
                               card,
                             ],
                           ),
@@ -778,61 +954,249 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   //  错题加练（v2.1.5）
   // ============================================================
 
-  /// 错题集：三环节中任一答错即算错题（跳过的环节不计），保持队列原顺序
+  /// 错题集：三环节中任一答错即算错题（跳过的环节不计），保持**本组队列**原顺序。
+  ///
+  /// v2.1.8：① 按 `_groupIds` 切片（只算本组的词）；② 遍历 `_queue` 而不是 `_allQueue`
+  /// （后者是整轮全量，会带出别的组的错词）。
   List<int> get _wrongIds {
+    final groupIds = _groupIds;
     final ids = <int>{};
-    _enToZhResults.forEach((id, ok) {
-      if (!ok) ids.add(id);
-    });
-    _chooseResults.forEach((id, ok) {
-      if (!ok) ids.add(id);
-    });
-    _dictResults.forEach((id, ok) {
-      if (!ok) ids.add(id);
-    });
+    for (final m in [_enToZhResults, _chooseResults, _dictResults]) {
+      m.forEach((id, ok) {
+        if (!ok && groupIds.contains(id)) ids.add(id);
+      });
+    }
     return [
-      for (final w in _allQueue)
+      for (final w in _queue)
         if (ids.contains(w['id'] as int)) w['id'] as int,
     ];
   }
 
-  /// 重做全部错题：以错题重建队列从头再来一轮（自选复习本就不写数据）
-  void _retryWrong() {
-    final wrong = _wrongIds;
-    if (wrong.isEmpty) return;
-    final byId = {for (final w in _allQueue) w['id'] as int: w};
-    final rows = [
-      for (final id in wrong)
-        if (byId[id] != null) byId[id]!,
-    ];
-    if (rows.isEmpty) return;
+  /// 本轮该词的得分（0–6）。自选复习是**纯练习**，分数只在统计页展示、不写库。
+  int _scoreFor(int wordId) {
+    var score = AppConstants.quizMaxScore;
+    void judge(bool? correct, bool? overtime) {
+      if (correct != true) score -= 1; // 答错 / 未作答（跳过）都扣
+      if (overtime == true) score -= 1;
+    }
+
+    judge(_enToZhResults[wordId], _enToZhTimeouts[wordId]);
+    judge(_chooseResults[wordId], _chooseTimeouts[wordId]);
+    judge(_dictResults[wordId], _dictTimeouts[wordId]);
+    return score.clamp(0, AppConstants.quizMaxScore);
+  }
+
+  // ============================================================
+  //  组结束编排（v2.1.8，与今日复习同一套）
+  // ============================================================
+
+  /// 本组结束的**唯一**编排入口：统计 →（有错题才）重测询问 → 本组统计页。
+  ///
+  /// 自选复习是**纯练习**（不写 FSRS、不写复习历史），因此这里**不做**
+  /// 「抽检询问」与「上传进度」——抽检会回写排期且已有独立入口（设置页那个按钮），
+  /// 上传在纯练习之后也没有任何数据变化可传。
+  Future<void> _endOfGroup() async {
+    if (_groupFinalized) return;
+    final outcome = _collectGroupOutcome();
+
+    if (outcome.wrongCount > 0) {
+      final started = await _maybeOfferGroupRetry(outcome);
+      if (!mounted) return;
+      if (started) return; // 重测结束后由 _finishRetry() 回到统计页
+    }
+    _showGroupStats(outcome);
+  }
+
+  /// 呈现本组统计页
+  void _showGroupStats(_GroupOutcome outcome) {
+    setState(() {
+      _groupOutcome = outcome;
+      _groupFinalized = true;
+      _stage = _QuizStage.groupStats;
+    });
+    _autoSave(); // 断点：在统计页退出后重进能回到统计页
+  }
+
+  /// 本组口径统计快照（全部按 wordId + `_groupIds` 切片，与出题顺序无关）
+  _GroupOutcome _collectGroupOutcome() {
+    final ids = _groupIds;
+    int correctIn(Map<int, bool> m) =>
+        m.entries.where((e) => ids.contains(e.key) && e.value).length;
+    int answeredIn(Map<int, bool> m) => m.keys.where(ids.contains).length;
+    final wrong = <int>{};
+    for (final m in [_enToZhResults, _chooseResults, _dictResults]) {
+      m.forEach((id, ok) {
+        if (ids.contains(id) && !ok) wrong.add(id);
+      });
+    }
+    var scoreSum = 0;
+    for (final w in _queue) {
+      scoreSum += _scoreFor(w['id'] as int);
+    }
+    return _GroupOutcome(
+      groupNo: _groupIndex + 1,
+      total: _queue.length,
+      enToZhCorrect: correctIn(_enToZhResults),
+      enToZhAnswered: answeredIn(_enToZhResults),
+      chooseCorrect: correctIn(_chooseResults),
+      dictCorrect: correctIn(_dictResults),
+      wrongIds: [
+        for (final w in _queue)
+          if (wrong.contains(w['id'] as int)) w['id'] as int,
+      ],
+      scoreSum: scoreSum,
+      scoreMax: _queue.length * AppConstants.quizMaxScore,
+    );
+  }
+
+  /// 询问是否重测本组错题。返回 true = 已进入重测（调用方**必须直接返回**，
+  /// 由 `_finishRetry()` 负责回到统计页，不得再走一遍编排）
+  Future<bool> _maybeOfferGroupRetry(_GroupOutcome outcome) async {
+    final rows = _retryRowsFor(outcome);
+    if (rows.isEmpty) return false;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重测本组错题？'),
+        content: Text('本组有 ${outcome.wrongCount} 个词答错过了。'
+            '自选复习本就是纯练习，重测只为加深记忆。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('不测'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('测验错题'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || go != true) return false;
+
+    // 快照本组正式结果：重测复用同一批 map，结束后还原，
+    // 保证统计页数字仍是「重测前」的口径（重测只作为附加行展示）
+    _snapEn = Map<int, bool>.from(_enToZhResults);
+    _snapChoose = Map<int, bool>.from(_chooseResults);
+    _snapDict = Map<int, bool>.from(_dictResults);
+    _snapAllQueue = _allQueue;
+    _snapQueue = _queue;
+    _retryOutcome = outcome;
+
     setState(() {
       _allQueue = rows;
+      // 重测**不再按 50 词切分**，整批一次走完
+      _queue = rows;
+      _index = 0;
+      _stage = _QuizStage.enToZh;
+      _stageSeq = _buildSeq(_queue.length);
       _isRetryMode = true;
       _phase = _Phase.quiz;
       _enToZhResults.clear();
       _chooseResults.clear();
       _dictResults.clear();
+      _enToZhTimeouts.clear();
+      _chooseTimeouts.clear();
+      _dictTimeouts.clear();
     });
-    _clearTempSave();
-    _startGroup(0);
+    _prepareStages(_queue);
+    _skipUnavailableEnToZh();
+    return true;
   }
 
-  Widget _buildResult() {
+  /// 重测用词：本组复习错词（保持队列原顺序）
+  List<Map<String, dynamic>> _retryRowsFor(_GroupOutcome outcome) {
+    final byId = <int, Map<String, dynamic>>{
+      for (final w in _queue) w['id'] as int: w,
+    };
+    return [
+      for (final id in outcome.wrongIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  /// 重测走完：还原正式结果 → 回到本组统计页
+  void _finishRetry() {
+    final outcome = _retryOutcome;
+    if (outcome != null) {
+      // 重测成绩只作为附加行（不覆盖原统计）
+      outcome.retryTotal = _queue.length;
+      outcome.retryCorrect = _queue.length - _wrongIds.length;
+    }
+    _retryOutcome = null;
+
+    _enToZhResults
+      ..clear()
+      ..addAll(_snapEn ?? const {});
+    _chooseResults
+      ..clear()
+      ..addAll(_snapChoose ?? const {});
+    _dictResults
+      ..clear()
+      ..addAll(_snapDict ?? const {});
+    _allQueue = _snapAllQueue ?? _allQueue;
+    _queue = _snapQueue ?? _queue;
+    _snapEn = null;
+    _snapChoose = null;
+    _snapDict = null;
+    _snapAllQueue = null;
+    _snapQueue = null;
+    _isRetryMode = false;
+    _index = 0;
+    _stageSeq = _buildSeq(_queue.length);
+
+    if (outcome != null) {
+      _showGroupStats(outcome);
+    } else {
+      setState(() => _stage = _QuizStage.groupStats);
+    }
+  }
+
+  /// 下一组（本组最后一题已答完，直接开新组）
+  void _goNextGroup() {
+    if (_groupIndex >= _groupCount - 1) return;
+    _startGroup(_groupIndex + 1);
+  }
+
+  /// 完成：清临时存档 + **回到范围选择页**（用户拍板）。
+  /// 与今日复习的「回首页」不同——自选复习是从设置页进来的，回去重选一批更顺手。
+  void _finishSession() {
+    _clearTempSave();
+    setState(() {
+      _phase = _Phase.setup;
+      _stage = _QuizStage.enToZh;
+      _stageSeq = [];
+      _groupOutcome = null;
+      _groupFinalized = false;
+      _isRetryMode = false;
+      _enToZhResults.clear();
+      _chooseResults.clear();
+      _dictResults.clear();
+      _enToZhTimeouts.clear();
+      _chooseTimeouts.clear();
+      _dictTimeouts.clear();
+      _queue = [];
+      _allQueue = [];
+      _index = 0;
+      _groupIndex = 0;
+    });
+  }
+
+  /// 本组统计页（v2.1.8）：**每组结束都出现**，取代原来只在整轮末出现的结果页。
+  /// 数字全部是本组口径（按 wordId 切片）；重测成绩只追加一行，不覆盖原统计。
+  Widget _buildGroupStats() {
     final theme = Theme.of(context);
-    // v2.1.5：分组后结果页统计整轮（全部组）而非最后一组
-    final total = _allQueue.length;
-    final wrongCount = _wrongIds.length;
-    final percent = total > 0
-        ? ((_enToZhCorrect + _chooseCorrect + _dictationCorrect) * 100 ~/
-            (total * 3))
-        : 0;
+    final o = _groupOutcome ?? _collectGroupOutcome();
+    final total = o.total;
+    final wrongCount = o.wrongCount;
+    // 综合得分率（本组得分 / 本组满分）
+    final percent = o.scoreMax > 0 ? (o.scoreSum * 100 ~/ o.scoreMax) : 0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(_isRetryMode ? '错题加练完成' : '复习完成'),
+        title: Text('第 ${o.groupNo}/$_groupCount 组完成'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -861,7 +1225,7 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                               : theme.colorScheme.outline,
                         ),
                         const SizedBox(height: 16),
-                        Text(_isRetryMode ? '本轮错题加练完成' : '本轮自选复习完成',
+                        Text('本组自选复习完成',
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             )),
@@ -877,7 +1241,7 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                         ],
                         const SizedBox(height: 8),
                         Text(
-                          '综合正确率 $percent%',
+                          '本组得分 ${o.scoreSum} / ${o.scoreMax}（$percent%）',
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: percent >= 80
                                 ? AppColors.ratingGood
@@ -894,43 +1258,54 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
                         ),
                         const SizedBox(height: 24),
                         _resultRow(theme, '英译汉',
-                            '$_enToZhCorrect / $_enToZhAnsweredCount',
+                            '${o.enToZhCorrect} / ${o.enToZhAnswered}',
                             Icons.translate, AppColors.primary),
                         const SizedBox(height: 8),
-                        _resultRow(theme, '选单词', '$_chooseCorrect / $total',
+                        _resultRow(theme, '选单词', '${o.chooseCorrect} / $total',
                             Icons.checklist, AppColors.ratingEasy),
                         const SizedBox(height: 8),
-                        _resultRow(theme, '默写', '$_dictationCorrect / $total',
+                        _resultRow(theme, '默写', '${o.dictCorrect} / $total',
                             Icons.edit_note, AppColors.ratingHard),
+                        // 重测成绩只追加，不覆盖上面的口径数字
+                        if (o.retryTotal != null) ...[
+                          const SizedBox(height: 8),
+                          _resultRow(
+                              theme,
+                              '本轮重测',
+                              '${o.retryCorrect ?? 0} / ${o.retryTotal}',
+                              Icons.replay,
+                              theme.colorScheme.outline),
+                        ],
                         const SizedBox(height: 32),
-                        if (wrongCount > 0) ...[
+                        if (_groupIndex < _groupCount - 1) ...[
                           SizedBox(
                             width: double.infinity,
                             height: 48,
                             child: FilledButton.icon(
-                              onPressed: _retryWrong,
-                              icon: const Icon(Icons.replay, size: 18),
-                              label: Text('重做错题（$wrongCount）',
+                              onPressed: _goNextGroup,
+                              icon: const Icon(Icons.arrow_forward, size: 18),
+                              label: Text(
+                                  '下一组（第 ${_groupIndex + 2}/$_groupCount 组）',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w600)),
                             ),
                           ),
                           const SizedBox(height: 12),
                         ],
-                        GlassButton(
-                          onPressed: _startQuiz,
-                          icon: Icons.refresh,
-                          label: '再来一轮',
-                          tinted: true,
-                        ),
-                        const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
                           height: 48,
-                          child: OutlinedButton(
-                            onPressed: () => context.pop(),
-                            child: const Text('返回'),
-                          ),
+                          child: _groupIndex < _groupCount - 1
+                              ? OutlinedButton(
+                                  onPressed: _finishSession,
+                                  child: const Text('完成'),
+                                )
+                              : FilledButton(
+                                  onPressed: _finishSession,
+                                  child: const Text('完成',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w600)),
+                                ),
                         ),
                       ],
                     ),
@@ -969,5 +1344,47 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
   }
 }
 
-enum _Phase { setup, quiz, result }
-enum _QuizStage { enToZh, chooseWord, dictation }
+/// 页面阶段（v2.1.8：`result` 已移除——整轮结果页被"每组统计页"取代）
+enum _Phase { setup, quiz }
+
+/// 环节（v2.1.8 新增 `groupStats`：本组统计页）
+enum _QuizStage { enToZh, chooseWord, dictation, groupStats }
+
+/// 本组统计快照（v2.1.8）。
+///
+/// 与今日复习的 `_GroupOutcome` 同构，差别是本页为纯练习、没有抽检错词。
+/// 重测结果只作为附加行写在它上面，**不回写**三环节结果 map。
+class _GroupOutcome {
+  _GroupOutcome({
+    required this.groupNo,
+    required this.total,
+    required this.enToZhCorrect,
+    required this.enToZhAnswered,
+    required this.chooseCorrect,
+    required this.dictCorrect,
+    required this.wrongIds,
+    this.scoreSum = 0,
+    this.scoreMax = 0,
+  });
+
+  /// 1 起的组号
+  final int groupNo;
+  /// 本组词数
+  final int total;
+  final int enToZhCorrect;
+  final int enToZhAnswered;
+  final int chooseCorrect;
+  final int dictCorrect;
+  /// 本组错词（wordId）
+  final List<int> wrongIds;
+
+  /// 本组得分合计与满分（0–6 分制：满分 = 词数 × 6）
+  final int scoreSum;
+  final int scoreMax;
+
+  /// 重测结果（未重测时保持 null）
+  int? retryTotal;
+  int? retryCorrect;
+
+  int get wrongCount => wrongIds.length;
+}

@@ -6,6 +6,7 @@ import '../../../shared/widgets/adaptive_content.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/glass.dart';
 import '../../../shared/widgets/word_play_button.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/utils/string_utils.dart';
 import '../../../domain/models/review_rating.dart';
@@ -610,21 +611,61 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                         )),
                     const SizedBox(height: 8),
                     ...(_history.take(20).map((h) {
+                      // v2.1.8 复习历史三态：
+                      // ① 常规测验（有 0–6 分）→ 分档文案 + `得分 / 6`
+                      // ② 熟练词抽检（kind=quiz）→ 「抽查正确 / 抽查失败」
+                      // ③ v2.1.8 之前的旧记录（无 score）→ 「已记录」
+                      final kind = ReviewKind.fromString(h['kind'] as String?);
+                      final isQuiz = kind == ReviewKind.quiz;
+                      final score = h['score'] as int?;
+                      final timeouts = (h['timeouts'] as int?) ?? 0;
+                      final band = score == null ? null : ScoreBand.of(score);
                       final rating = ReviewRating.fromValue(h['rating'] as int);
+
+                      final Color dotColor;
+                      final String title;
+                      if (isQuiz) {
+                        final failed = rating == ReviewRating.again;
+                        dotColor =
+                            failed ? AppColors.ratingAgain : AppColors.ratingGood;
+                        title = failed ? '抽查失败' : '抽查正确';
+                      } else if (band == null) {
+                        dotColor = theme.colorScheme.outline;
+                        title = '已记录';
+                      } else {
+                        dotColor = switch (band) {
+                          ScoreBand.unfamiliar => AppColors.ratingAgain,
+                          ScoreBand.gettingThere => AppColors.ratingHard,
+                          ScoreBand.understood => AppColors.ratingGood,
+                          ScoreBand.clear => AppColors.ratingEasy,
+                        };
+                        title = band.label;
+                      }
+
                       return ListTile(
                         dense: true,
                         leading: CircleAvatar(
                           radius: 6,
-                          backgroundColor: switch (rating) {
-                            ReviewRating.again => AppColors.ratingAgain,
-                            ReviewRating.hard => AppColors.ratingHard,
-                            ReviewRating.good => AppColors.ratingGood,
-                            ReviewRating.easy => AppColors.ratingEasy,
-                          },
+                          backgroundColor: dotColor,
                         ),
-                        title: Text(rating.label),
-                        subtitle: Text(StringUtils.relativeTime(
-                            DateTime.parse(h['reviewed_at'] as String))),
+                        title: Row(
+                          children: [
+                            Expanded(child: Text(title)),
+                            if (!isQuiz && score != null)
+                              Text(
+                                '$score / ${AppConstants.quizMaxScore}',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: dotColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Text([
+                          StringUtils.relativeTime(
+                              DateTime.parse(h['reviewed_at'] as String)),
+                          if (timeouts > 0) '超时 $timeouts 处',
+                        ].join(' · ')),
                       );
                     })),
                   ],

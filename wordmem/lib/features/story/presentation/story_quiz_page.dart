@@ -8,6 +8,7 @@ import '../../../domain/models/story_quiz.dart';
 import '../../../domain/services/story_quiz_engine.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
+import '../../../shared/widgets/keyboard_inset.dart';
 
 // 路由包装：按 story id + mode 加载短文后进入答题页
 class StoryQuizRoute extends ConsumerWidget {
@@ -78,6 +79,19 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
   // 内联输入控制器（巩固/拓展模式）
   final TextEditingController _inputCtrl = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
+  /// v2.1.8：每个空格一个 GlobalKey —— 聚焦某空时把它滚进可视区。
+  /// 键盘遮挡在这个页面不是"输入框被挡"（输入框是固定底栏，Scaffold 已把它
+  /// 抬到键盘上沿），而是"看不到自己在填哪个空"：长短文里当前空格会滚出屏幕。
+  final Map<int, GlobalKey> _blankKeys = {};
+
+  GlobalKey _blankKey(int idx) =>
+      _blankKeys.putIfAbsent(idx, () => GlobalKey());
+
+  void _ensureBlankVisible(int idx) {
+    final ctx = _blankKeys[idx]?.currentContext;
+    if (ctx == null) return;
+    ensureFieldVisible(ctx, alignment: 0.35);
+  }
 
   @override
   void initState() {
@@ -108,7 +122,10 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
     // 进入页面后聚焦第一个空格，自动弹出键盘（巩固/拓展模式）
     if (widget.mode != StoryQuizMode.review && _quiz.blanks.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _inputFocus.requestFocus();
+        if (!mounted) return;
+        _inputFocus.requestFocus();
+        // v2.1.8：键盘弹出后把当前空格滚进可视区（长短文里尤其必要）
+        _ensureBlankVisible(_focusIndex);
       });
     }
     _findNextStory();
@@ -152,6 +169,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
       setState(() => _focusIndex = next);
       _inputCtrl.clear();
       _inputFocus.requestFocus();
+      _ensureBlankVisible(next);
     } else {
       // 全部填完：清输入框、移除焦点
       setState(() => _focusIndex = -1);
@@ -281,6 +299,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
             TextSelection.collapsed(offset: _inputCtrl.text.length);
       });
       _inputFocus.requestFocus();
+      _ensureBlankVisible(index);
     }
   }
 
@@ -653,6 +672,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
       if (token.isBlank) {
         final idx = token.blankIndex!;
         children.add(_BlankWidget(
+          key: _blankKey(idx),
           theme: theme,
           token: _quiz.blanks[idx].word,
           isBlank: true,
@@ -683,6 +703,7 @@ class _StoryQuizPageState extends ConsumerState<StoryQuizPage> {
       if (token.isBlank) {
         final idx = token.blankIndex!;
         children.add(_BlankWidget(
+          key: _blankKey(idx),
           theme: theme,
           token: _quiz.blanks[idx].word,
           isBlank: true,
@@ -924,6 +945,7 @@ class _BlankWidget extends StatelessWidget {
   final StoryQuizMode mode;
 
   const _BlankWidget({
+    super.key,
     required this.theme,
     required this.token,
     required this.isBlank,

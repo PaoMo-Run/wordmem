@@ -9,6 +9,7 @@ import '../../../domain/services/sync/sync_models.dart';
 import '../../../infra/sync/webdav_client.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/glass.dart';
+import 'sync_restore_flow.dart';
 
 /// 从网络同步（v2.1.3，施工文档 §2.2）
 ///
@@ -81,6 +82,16 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 通知全 App「词库数据已变化」（v2.1.7）。
+  ///
+  /// 首页统计 / 未来 3 小时到期提示 / 词库列表 / 复习中心 / 我的页统计都靠这
+  /// 两个信号重载。恢复备份是**整体替换数据库**，词库与词林分组都需重算，
+  /// 因此两个信号一起自增。
+  void _notifyDataChanged() {
+    ref.read(wordListVersionProvider.notifier).state++;
+    ref.read(groupVersionProvider.notifier).state++;
+  }
+
   // ─────────────────────── 上传（§2.4）───────────────────────
 
   Future<void> _upload() async {
@@ -135,36 +146,25 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     setState(() => _downloading = true);
     try {
       final repo = _buildRepo();
-      var r = await repo.download(snapshotName: snapshotName, confirmed: false);
-      if (r.needsConfirmation && mounted) {
-        final action = await showDialog<String>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('下载数据'),
-            content: Text(r.message),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'cancel'),
-                  child: const Text('取消')),
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'upload-first'),
-                  child: const Text('先上传本机数据')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, 'download'),
-                  child: const Text('仍要下载')),
-            ],
-          ),
-        );
-        if (action == null || action == 'cancel') return;
-        if (action == 'upload-first') {
+      // v2.1.7：防呆确认链抽到 executeCloudRestore，与首页启动探测共用同一份
+      // （恢复是破坏性操作，不允许出现第二套绕过确认的实现）
+      final r = await executeCloudRestore(
+        context: context,
+        repo: repo,
+        snapshotName: snapshotName,
+        onUploadFirst: () async {
           setState(() => _downloading = false);
           await _upload(); // 直接转上传分支（§4.3）
-          return;
-        }
-        r = await repo.download(snapshotName: snapshotName, confirmed: true);
-      }
+        },
+      );
+      if (r == null) return; // 用户取消 / 已转入上传分支
       _snack(r.message);
-      if (r.ok) _refreshSnapshots();
+      if (r.ok) {
+        await _refreshSnapshots();
+        // v2.1.7：恢复备份整体覆盖了本机数据，必须通知全局刷新——
+        // 否则首页统计/未来 3 小时提示/词库列表要等用户手动下拉才更新
+        _notifyDataChanged();
+      }
       if (repo.lastManifestRepaired && mounted) {
         setState(() => _repairedNotice = true);
       }

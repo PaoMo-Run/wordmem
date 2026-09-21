@@ -251,6 +251,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           ref
                               .read(wordListVersionProvider.notifier)
                               .state++;
+                          // v2.1.7：整库导入同样会改变释义 → 近义词/词根分组需重聚类，
+                          // 与下方「刷新词库释义」保持一致（否则分组页仍显示旧分组）
+                          ref.read(groupVersionProvider.notifier).state++;
                         }
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(

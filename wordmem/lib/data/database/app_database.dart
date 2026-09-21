@@ -54,8 +54,8 @@ class AppDatabase {
     // 4.5 复习算法迁移（艾宾浩斯 7 周期）：老 8 档 reps → 新 7 档
     _migrateSchedule();
 
-    // 4.6 熟练词抽检迁移（v2.1.6）：已掌握词的 due 从「10 年后」拉回当前
-    _migrateMasteredQuiz();
+    // 4.6 存量已掌握词 due 自愈（v2.1.7）：把 v2.1.5 fuse 遗留的「10 年后」拉回当前
+    _healLegacyMasteredDue();
 
     // 5. 初始化默认数据
     _initDefaultData();
@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS review_logs (
   elapsed_days    REAL,
   scheduled_days  REAL,
   reviewed_at     TEXT NOT NULL,
+  score           INTEGER,
+  timeouts        INTEGER NOT NULL DEFAULT 0,
+  kind            TEXT NOT NULL DEFAULT 'review',
   FOREIGN KEY (user_word_id) REFERENCES user_words(id) ON DELETE CASCADE
 );
 ''');
@@ -182,6 +185,27 @@ CREATE TABLE IF NOT EXISTS story_quiz_records (
     if (!uwCols.contains('source_story_id')) {
       _vocabDb.execute(
           'ALTER TABLE user_words ADD COLUMN source_story_id INTEGER;');
+    }
+
+    // 检查式迁移：review_logs 增加 score / timeouts / kind（v2.1.8）
+    // - score:    本轮测验得分 0–6（三环节 × 2 分扣分制；旧的存量记录为 NULL）
+    // - timeouts: 本轮超时的环节数 0–3（复习历史里显示「超时 N 处」）
+    // - kind:     'review' 常规三环节测验 ｜ 'quiz' 熟练词抽检
+    //   （抽检此前不写任何历史；现在统一进 review_logs 用 kind 区分）
+    final rlCols = _vocabDb
+        .select('PRAGMA table_info(review_logs)')
+        .map((r) => r['name'] as String)
+        .toList();
+    if (!rlCols.contains('score')) {
+      _vocabDb.execute('ALTER TABLE review_logs ADD COLUMN score INTEGER;');
+    }
+    if (!rlCols.contains('timeouts')) {
+      _vocabDb.execute(
+          'ALTER TABLE review_logs ADD COLUMN timeouts INTEGER NOT NULL DEFAULT 0;');
+    }
+    if (!rlCols.contains('kind')) {
+      _vocabDb.execute(
+          "ALTER TABLE review_logs ADD COLUMN kind TEXT NOT NULL DEFAULT 'review';");
     }
 
     // 索引
@@ -259,26 +283,86 @@ END;
     }
   }
 
-  /// 熟练词抽检迁移（v2.1.6）：把已掌握词的 due 从「10 年后」拉回当前，
-  /// 使其进入抽检候选池。仅执行一次（app_settings 打标），幂等安全。
-  void _migrateMasteredQuiz() {
-    try {
-      final done = _vocabDb.select(
-        "SELECT COUNT(*) as c FROM app_settings WHERE key = 'quiz_mastered_v1'",
-      ).first['c'] as int;
-      if (done > 0) return;
+  /// fuse 遗留值的判定阈值：远超正常抽检排期上限（答对 15 天）。
+  /// 留 365 天是为了让"正常数据会不会被误伤"这个问题有**数学上的**答案。
+  static const Duration legacyMasteredDueThreshold = Duration(days: 365);
 
-      _vocabDb.execute(
-        "UPDATE user_words SET due = ? WHERE card_state = 'mastered'",
-        [DateTime.now().toUtc().toIso8601String()],
+  /// 严格形状：ISO-8601 + 显式时区（`Z` 或 `±HH:MM`）。
+  ///
+  /// 为什么要形状校验，而不是直接 `DateTime.tryParse`：Dart 的 `tryParse` 会
+  /// **宽松归一化越界值**——`'2036-13-45'` 会被解析成 2037-02-14，距离现在一样「很远」，
+  /// 于是一个坏字符串会被误判成 fuse 遗留值而改掉。本判据的前提是
+  /// 「只可能命中 App 自己写出的 fuse 值」，所以形状不符的脏数据一律放行不动。
+  ///
+  /// 实测真机存档 285 行的 `due` / `created_at` / `last_review` / `updated_at`
+  /// **全部**符合该形状（长度 27、`Z` 结尾），故收紧零损失。
+  static final RegExp _isoWithZone =
+      RegExp(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$');
+
+  /// 「10 年 fuse 遗留值」判据（纯函数，便于单测）。
+  ///
+  /// 正常已掌握词的 `due` 只会在 now 前后 15 天内浮动
+  /// （答对 +15 天 / 跳过 +7 天 / 答错 +3 天），因此 `due - now > 365 天`
+  /// 只可能是 v2.1.5 `_masteredFuse` 的残留。
+  ///
+  /// 形状不符 / 缺失 / 不可解析 → **返回 false（不动它）**：脏数据宁可漏修，不可误修。
+  static bool isLegacyMasteredDue(String? dueIso, DateTime now) {
+    final raw = dueIso ?? '';
+    if (!_isoWithZone.hasMatch(raw)) return false;
+    final due = DateTime.tryParse(raw);
+    if (due == null) return false;
+    return due.difference(now.toUtc()) > legacyMasteredDueThreshold;
+  }
+
+  /// 存量已掌握词的 due 自愈（v2.1.7）。
+  ///
+  /// **为什么不能再用一次性迁移**：v2.1.5 的 `_masteredFuse` 会把「掌握」的词
+  /// due 推到 10 年后（3650 天）。v2.1.6 用一次性迁移 `quiz_mastered_v1` 把它拉回，
+  /// 但写法是「查到 app_settings 标签就 return」。2026-09-17 真机实测发现：
+  /// 标签是在**空库**状态下写入的，之后才通过备份导入/恢复带进来的存量词
+  /// **永远不会**被修到——用户 57 个已掌握词里 52 个停在 2036 年，永远进不了抽检池。
+  ///
+  /// 因此改成**按条件自愈**，不依赖任何标签：
+  /// - 判据 [isLegacyMasteredDue]：`due` 可解析 且 距现在 > 365 天
+  /// - 只处理 `card_state = 'mastered'`：fuse 只作用于已掌握词，绝不放宽到
+  ///   review / learning / new —— 它们的 due 是真实排期，一行都不能碰
+  /// - 不依赖标签 ⇒ 天然幂等（跑完即无行可匹配），且**每次启动都会跑**：
+  ///   将来再恢复一次旧备份，也会在下次启动被自愈，而不是重新卡死
+  /// - 只写 `due` 与 `updated_at`：**不碰** stability / difficulty / reps /
+  ///   lapses / card_state / last_review，即不改变任何学习进度语义
+  /// - 全部写在一个事务里；失败整体回滚并静默（不阻塞启动，下次再试）
+  ///
+  /// 无命中时直接 return：绝大多数启动是零写入。
+  void _healLegacyMasteredDue() {
+    try {
+      final now = DateTime.now().toUtc();
+      final rows = _vocabDb.select(
+        "SELECT id, due FROM user_words WHERE card_state = 'mastered'",
       );
-      _vocabDb.execute(
-        '''INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at''',
-        ['quiz_mastered_v1', '1', DateTime.now().toUtc().toIso8601String()],
-      );
+      final ids = <int>[
+        for (final r in rows)
+          if (isLegacyMasteredDue(r['due'] as String?, now)) r['id'] as int,
+      ];
+      if (ids.isEmpty) return;
+
+      final nowIso = now.toIso8601String();
+      _vocabDb.execute('BEGIN');
+      try {
+        for (final id in ids) {
+          // 再带一次 card_state 条件：SELECT 与 UPDATE 之间状态若被改过就不动它
+          _vocabDb.execute(
+            'UPDATE user_words SET due = ?, updated_at = ? '
+            "WHERE id = ? AND card_state = 'mastered'",
+            [nowIso, nowIso, id],
+          );
+        }
+        _vocabDb.execute('COMMIT');
+      } catch (_) {
+        _vocabDb.execute('ROLLBACK');
+        rethrow; // 交给外层 catch 静默
+      }
     } catch (_) {
-      // 迁移失败不阻塞启动，下次启动重试
+      // 自愈失败不阻塞启动：数据保持原样，下次启动重试
     }
   }
 

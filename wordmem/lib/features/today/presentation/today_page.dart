@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/colors.dart';
+import '../../../data/repositories/sync_repository.dart';
+import '../../../infra/sync/webdav_client.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/glass.dart';
 import '../../../domain/models/stats.dart';
+import '../../settings/presentation/sync_restore_flow.dart';
 import '../models/quick_action.dart';
 import '../data/quick_actions_repo.dart';
 
@@ -44,6 +50,13 @@ class TodayPage extends ConsumerWidget {
   }
 }
 
+/// 本次进程是否已做过「启动时云端备份探测」（v2.1.7）。
+///
+/// 底部导航是路由切换（不是 IndexedStack），每次点回「今日」都会重建本页，
+/// 所以必须用**进程级**标志保证「只在冷启动探测一次」——
+/// 单纯切页、切回前台都不打扰（用户拍板的设计点 1）。
+bool _startupProbeDone = false;
+
 class _TodayContent extends ConsumerStatefulWidget {
   const _TodayContent();
 
@@ -51,7 +64,8 @@ class _TodayContent extends ConsumerStatefulWidget {
   ConsumerState<_TodayContent> createState() => _TodayContentState();
 }
 
-class _TodayContentState extends ConsumerState<_TodayContent> {
+class _TodayContentState extends ConsumerState<_TodayContent>
+    with WidgetsBindingObserver {
   TodayStats? _stats;
   int _streak = 0;
   List<QuickAction> _quickActions = [];
@@ -60,9 +74,164 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
     _loadQuickActions();
+    _probeRemoteBackupOnStartup();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 回到前台时重算「未来 3 小时到期」。
+  ///
+  /// 这个数字与**当前时刻**有关，会随时间自己变化；而 `upcomingDueCountProvider`
+  /// 只在词库版本变化时重算 —— 不主动刷新就会一直停在打开 App 那一刻的值
+  /// （真机反馈 2026-09-17：下拉刷新没反应，切到桌面再进才更新）。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshAll();
+  }
+
+  /// 刷新首页全部数据：统计 + 「未来 3 小时到期」窗口
+  ///
+  /// 统计是普通查询，重跑即可；窗口值来自 FutureProvider，**必须显式失效**，
+  /// 否则下拉刷新只会更新上面的数字、下面那行时间敏感的数字不动。
+  Future<void> _refreshAll() async {
+    if (!mounted) return;
+    _loadData();
+    ref.invalidate(upcomingDueCountProvider);
+    try {
+      await ref.read(upcomingDueCountProvider.future);
+    } catch (_) {
+      // 刷新失败保留原值，不打断下拉动画
+    }
+  }
+
+  // ───────────── 启动时云端备份探测（v2.1.7）─────────────
+
+  /// 冷启动时静默对比云端备份与本机水位（设计点 1~6）。
+  ///
+  /// 约束：
+  /// - 只探测一次，且在**延迟 2 秒后**进行：不阻塞首屏、不显示 loading
+  /// - 未配置网盘 → 直接返回：纯离线用户零网络行为（守住"可完全离线运行"）
+  /// - 网络失败 → 静默，不弹任何错误
+  /// - 用户选「稍后」→ 记住该快照名，同一份快照不再提示
+  void _probeRemoteBackupOnStartup() {
+    if (_startupProbeDone) return;
+    _startupProbeDone = true;
+    unawaited(_probeRemoteBackup());
+  }
+
+  /// 探测的外层保护：探测是后台增强，任何异常都必须静默吞掉——
+  /// [unawaited] 触发的异步异常若无人接住会打穿到 Zone 层。
+  Future<void> _probeRemoteBackup() async {
+    try {
+      await _runRemoteBackupProbe();
+    } catch (_) {
+      // 静默：失败无感是设计点 3
+    }
+  }
+
+  Future<void> _runRemoteBackupProbe() async {
+    await Future.delayed(AppConstants.syncProbeDelay);
+    if (!mounted) return;
+
+    // 1) 配置闸门：未配置网盘 = 纯离线用户，不发起任何网络请求
+    final store = ref.read(syncSettingsStoreProvider);
+    final url = await store.read(SyncSettingKeys.davUrl);
+    final user = await store.read(SyncSettingKeys.davUser);
+    final password = await store.read(SyncSettingKeys.davPassword);
+    if (!mounted) return;
+    if (url == null ||
+        url.isEmpty ||
+        user == null ||
+        user.isEmpty ||
+        password == null ||
+        password.isEmpty) {
+      return;
+    }
+
+    // 2) 只拉 manifest 探测（不下载快照内容；任何异常一律静默）
+    final repo = SyncRepository(
+      storage: WebdavSyncStorage(url: url, user: user, password: password),
+      settings: store,
+      localStats: ref.read(syncLocalStatsProvider),
+      backup: ref.read(syncBackupGatewayProvider),
+    );
+    final entry = await repo.probeNewerSnapshot();
+    if (entry == null || !mounted) return;
+
+    // 3) 本次已忽略过这份快照 → 不再打扰（设计点 4）
+    final prefs = await ref.read(sharedPreferencesProvider.future);
+    if (!mounted) return;
+    if (prefs.getString(AppConstants.keySyncProbeDismissed) == entry.name) {
+      return;
+    }
+
+    // 4) 询问是否下载
+    final local = entry.uploadedTime?.toLocal();
+    final whenText = local != null ? _fmtDateTime(local) : entry.name;
+    final deviceName = entry.deviceName;
+    final deviceText = (deviceName != null && deviceName.isNotEmpty)
+        ? '（来自 $deviceName）'
+        : '';
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('云端有更新的备份'),
+        content: Text(
+          '云端备份 $whenText$deviceText 比本机进度新，是否现在下载恢复？\n\n'
+          '下载会用云端备份覆盖本机当前的学习数据。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('下载'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (go != true) {
+      // 记账：同一份快照不再提示，云端出现更新的快照时才会再问
+      await prefs.setString(AppConstants.keySyncProbeDismissed, entry.name);
+      return;
+    }
+
+    // 5) 走与「我的 → 进度同步」完全相同的恢复链路（含防呆确认，不绕过）
+    final r = await executeCloudRestore(
+      context: context,
+      repo: repo,
+      snapshotName: entry.name,
+    );
+    if (r == null || !mounted) return;
+    _showSnack(r.message);
+    if (r.ok) {
+      // 恢复成功 → 通知全 App 重载（本页靠 ref.listen 自动刷新，无需下拉）
+      ref.read(wordListVersionProvider.notifier).state++;
+      ref.read(groupVersionProvider.notifier).state++;
+    }
+  }
+
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  static String _fmtDateTime(DateTime t) =>
+      '${t.year}-${t.month.toString().padLeft(2, '0')}-'
+      '${t.day.toString().padLeft(2, '0')} '
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   Future<void> _loadQuickActions() async {
     final ids = await _quickRepo.load();
@@ -72,6 +241,7 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
   }
 
   void _loadData() {
+    if (!mounted) return;
     try {
       final statsDao = ref.read(statsDaoProvider);
       final reviewDao = ref.read(reviewDaoProvider);
@@ -101,7 +271,7 @@ class _TodayContentState extends ConsumerState<_TodayContent> {
     final upcoming = ref.watch(upcomingDueCountProvider).valueOrNull;
 
     return RefreshIndicator(
-      onRefresh: () async => _loadData(),
+      onRefresh: _refreshAll,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 116),
         children: [

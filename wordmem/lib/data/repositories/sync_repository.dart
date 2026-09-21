@@ -151,7 +151,12 @@ class SyncRepository {
   /// 拉取 manifest：不存在 → null；解析失败 / schema 不识别 → 降级重建
   /// （PROPFIND 按文件名重建，sha256/parent/stats 置 null）并写回，
   /// 同时置 [lastManifestRepaired]（§5：顶部提示"云端索引已自动修复"）。
-  Future<SyncManifest?> fetchManifest() async {
+  ///
+  /// [allowRepair] = false → **完全不写云端**，解析失败直接返回 null。
+  /// v2.1.7 的启动探测必须用这个模式：探测是**只读**语义，不能因为云端索引
+  /// 恰好损坏就在冷启动时替用户改写云端 manifest——那会把"只探测"变成
+  /// "悄悄改数据"，而且用户完全无感。
+  Future<SyncManifest?> fetchManifest({bool allowRepair = true}) async {
     lastManifestRepaired = false;
     final Uint8List raw;
     try {
@@ -163,8 +168,10 @@ class SyncRepository {
     try {
       return SyncManifest.fromJsonString(utf8.decode(raw));
     } on FormatException {
+      if (!allowRepair) return null;
       return await _rebuildManifest();
     } on TypeError {
+      if (!allowRepair) return null;
       return await _rebuildManifest();
     }
   }
@@ -207,6 +214,31 @@ class SyncRepository {
   static DateTime? _timeFromName(String name) {
     final entry = SnapshotEntry(name: name);
     return entry.uploadedTime;
+  }
+
+  /// 探测云端是否有比本机水位更新的快照（v2.1.7 启动探测）。
+  ///
+  /// 只拉 manifest.json（轻量），**不下载任何快照内容**。
+  /// 返回 null 一律表示「不要打扰用户」：
+  /// - 云端没有 manifest / 没有快照
+  /// - 云端最新快照 == 本机水位（本机已是最新）
+  /// - 网络或解析失败（探测是后台增强，失败必须静默）
+  ///
+  /// ⚠️ 调用方必须**先确认已配置网盘**再调用：未配置 = 纯离线用户，
+  /// 不该产生任何网络行为（产品定性：核心功能完全离线可用）。
+  Future<SnapshotEntry?> probeNewerSnapshot() async {
+    try {
+      final watermark = await settings.read(SyncSettingKeys.watermarkName);
+      // allowRepair: false —— 探测**绝不写云端**：manifest 损坏时直接放弃本次探测
+      final manifest = await fetchManifest(allowRepair: false);
+      if (manifest == null) return null;
+      final latest = manifest.latest;
+      if (latest == null) return null;
+      if (latest == watermark) return null; // 水位一致 → 云端无更新
+      return manifest.entry(latest);
+    } catch (_) {
+      return null; // 静默失败：不弹错误、不打断启动
+    }
   }
 
   // ─────────────────────── 上传（§2.4）───────────────────────

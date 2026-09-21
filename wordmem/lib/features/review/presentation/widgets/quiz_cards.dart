@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../domain/models/word_option.dart';
 import '../../../../shared/widgets/glass.dart';
+import '../../../../shared/widgets/keyboard_inset.dart';
 import '../../../../shared/widgets/word_play_button.dart';
 
 /// 统一的测验卡片组件集合
@@ -10,7 +11,10 @@ import '../../../../shared/widgets/word_play_button.dart';
 /// 1. EnToZhChoiceCard 英译汉选择题（看英文单词，选对应中文释义）
 /// 2. ChooseWordCard 四选一（看中文释义，选对应英文单词）
 /// 3. DictationCard 默写（看中文释义/首字母提示，拼写英文）
-/// 所有卡片均带"跳过"选项。
+///
+/// v2.1.8：**卡片内不再提供「跳过」按钮**——页面顶部导航行的「下一题」
+/// 与之语义等价（未作答即跳过，不计对错），两个入口本就重复。
+/// 删掉卡片内入口后，未作答时由各页导航行对「下一题」做主色强调引导。
 ///
 /// 设计约定（2026-08-30 液体玻璃）：题干卡玻璃化 + 主按钮 GlassButton；
 /// 评分色深浅自适应（dark 亮化版），正文对比度 ≥4.5:1。
@@ -25,7 +29,6 @@ class EnToZhChoiceCard extends StatefulWidget {
   final List<WordOption> options;
   final void Function(bool correct) onAnswered;
   final VoidCallback onNext;
-  final VoidCallback onSkip;
   final bool isLast;
 
   /// 单词发音回调（null = 不显示播放按钮，如开关关闭）。
@@ -39,7 +42,6 @@ class EnToZhChoiceCard extends StatefulWidget {
     required this.options,
     required this.onAnswered,
     required this.onNext,
-    required this.onSkip,
     required this.isLast,
     this.onPlayWord,
   });
@@ -160,12 +162,6 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
                 blur: 0,
               ),
             ],
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: widget.onSkip,
-              icon: const Icon(Icons.skip_next, size: 18),
-              label: const Text('跳过'),
-            ),
           ],
         ),
       ),
@@ -251,7 +247,6 @@ class ChooseWordCard extends StatefulWidget {
   final List<WordOption> options;
   final void Function(bool correct) onAnswered;
   final VoidCallback onNext;
-  final VoidCallback onSkip;
   final bool isLast;
 
   /// 单词发音回调（null = 不显示）。仅在作答后随正确答案显示，防泄答案。
@@ -264,7 +259,6 @@ class ChooseWordCard extends StatefulWidget {
     required this.options,
     required this.onAnswered,
     required this.onNext,
-    required this.onSkip,
     required this.isLast,
     this.onPlayWord,
   });
@@ -377,12 +371,6 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
                 blur: 0,
               ),
             ],
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: widget.onSkip,
-              icon: const Icon(Icons.skip_next, size: 18),
-              label: const Text('跳过'),
-            ),
           ],
         ),
       ),
@@ -463,7 +451,6 @@ class DictationCard extends StatefulWidget {
   final bool showHint; // 是否显示首字母提示
   final void Function(bool correct) onAnswered;
   final VoidCallback onNext;
-  final VoidCallback onSkip;
   final bool isLast;
 
   /// 单词发音回调（null = 不显示）。仅在作答后随正确答案显示，防泄答案。
@@ -476,7 +463,6 @@ class DictationCard extends StatefulWidget {
     this.showHint = true,
     required this.onAnswered,
     required this.onNext,
-    required this.onSkip,
     required this.isLast,
     this.onPlayWord,
   });
@@ -485,9 +471,12 @@ class DictationCard extends StatefulWidget {
   State<DictationCard> createState() => _DictationCardState();
 }
 
-class _DictationCardState extends State<DictationCard> {
+class _DictationCardState extends State<DictationCard>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _focus = FocusNode();
+  /// v2.1.8：用于把输入框滚进可视区（键盘遮挡修复）
+  final _fieldKey = GlobalKey();
   bool _answered = false;
   bool _correct = false;
   // v2.1.5：首字母提示改为按需展开（默认不显示，点「首字母提示」按钮才出现）
@@ -501,7 +490,38 @@ class _DictationCardState extends State<DictationCard> {
       : AppColors.ratingAgain;
 
   @override
+  void initState() {
+    super.initState();
+    // v2.1.8 键盘遮挡三层兜底：
+    // ① 聚焦时定位（键盘刚起，位置可能偏）；② 键盘高度变化后重定位（真正生效的一次）；
+    // ③ 首帧补一次（卡片自带焦点/切题时键盘已在弹出路径上）。
+    _focus.addListener(_onFocusChanged);
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _focus.hasFocus) _scrollFieldIntoView();
+    });
+  }
+
+  void _onFocusChanged() {
+    if (_focus.hasFocus) _scrollFieldIntoView();
+  }
+
+  void _scrollFieldIntoView() {
+    final ctx = _fieldKey.currentContext;
+    if (ctx == null || !mounted) return;
+    ensureFieldVisible(ctx);
+  }
+
+  @override
+  void didChangeMetrics() {
+    // 输入法高度变化 / 外接键盘切换 / 连续切题时重新定位
+    if (_focus.hasFocus) _scrollFieldIntoView();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _focus.removeListener(_onFocusChanged);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -592,6 +612,7 @@ class _DictationCardState extends State<DictationCard> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: TextField(
+                  key: _fieldKey,
                   controller: _controller,
                   focusNode: _focus,
                   textAlign: TextAlign.center,
@@ -644,7 +665,7 @@ class _DictationCardState extends State<DictationCard> {
                 height: 48,
                 blur: 0,
               ),
-            ] else
+            ]             else
               GlassButton(
                 onPressed: _submit,
                 label: '提交',
@@ -652,12 +673,6 @@ class _DictationCardState extends State<DictationCard> {
                 height: 48,
                 blur: 0,
               ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: widget.onSkip,
-              icon: const Icon(Icons.skip_next, size: 18),
-              label: const Text('跳过'),
-            ),
           ],
         ),
       ),

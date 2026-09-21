@@ -9,6 +9,19 @@
 class SynonymDetector {
   SynonymDetector._();
 
+  /// 判定「互为近义词」所需的最小共享核心词数（v2.1.7 下调：2 → 1）。
+  ///
+  /// 原值 2（"L2 释义重叠须 ≥2；仅 1 个重叠时须同时词林义类命中"）在真机词库上
+  /// 过于苛刻：用 285 词的真实存档实测，**共享 ≥2 个核心词的对只有 10 对，
+  /// 而"共享恰好 1 个"的语义近义词对有 62 对**（loyal↔faithful 共享"忠诚"、
+  /// vast↔enormous 共享"巨大"、deceive↔cheat 共享"欺骗"、shore↔coast 共享"海岸"…）。
+  /// 叠加建群时"种子需 ≥2 个近义词"的门槛后，全库没有任何一个词有 2 个近义词
+  /// → 近义词群整块消失。
+  ///
+  /// 降为 1 后实测可建 19 群。放宽带来的误报（如 fiction↔literature 共享"文学作品"）
+  /// 由词详情页的「移出此群」人工复核兜底（见 isSynonym 的设计说明）。
+  static const int minSharedKeywords = 1;
+
   /// 虚词后缀（作为义项结尾时去掉，如"高兴的"→"高兴"）
   static const String _suffixes = '的地得等之';
 

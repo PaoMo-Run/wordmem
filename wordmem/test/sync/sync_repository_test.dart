@@ -215,6 +215,101 @@ void main() {
       expect(repo.lastManifestRepaired, isTrue);
       expect(m!.snapshots.first.name, 'wordmem_20260902T000000Z.zip');
     });
+
+    // v2.1.7 修复：探测必须是只读语义。原实现直接调 fetchManifest()，
+    // 云端 manifest 损坏时会走降级重建 + **写回云端**（用户完全无感地改了云端数据）。
+    test('allowRepair: false → 损坏时返回 null 且不写云端（启动探测用）', () async {
+      final storage = FakeSyncStorage();
+      final corrupt = Uint8List.fromList(utf8.encode('not json at all'));
+      storage.files['/wordmem/manifest.json'] = corrupt;
+      storage.seedZip('wordmem_20260901T000000Z.zip');
+      final repo = buildRepo(
+          storage: storage,
+          settings: FakeSettings(),
+          stats: FakeStats(),
+          backup: FakeBackup());
+
+      final m = await repo.fetchManifest(allowRepair: false);
+      expect(m, isNull, reason: '索引损坏时无法判定新旧 → 放弃本次探测');
+      expect(repo.lastManifestRepaired, isFalse);
+      expect(storage.files['/wordmem/manifest.json'], corrupt,
+          reason: '探测不得替用户改写云端 manifest');
+      expect(storage.ops.where((o) => o.startsWith('write:')), isEmpty,
+          reason: '探测期间不应发生任何写请求');
+    });
+  });
+
+  group('probeNewerSnapshot（v2.1.7 启动探测）', () {
+    SyncRepository repoWith({
+      required String? watermark,
+      required String latestName,
+    }) {
+      final storage = FakeSyncStorage();
+      storage.seedZip(latestName);
+      storage.files['/wordmem/manifest.json'] = Uint8List.fromList(
+          utf8.encode(manifestOf([ownEntry(latestName)], latestName)
+              .toJsonString()));
+      final settings = FakeSettings();
+      if (watermark != null) {
+        settings.map[SyncSettingKeys.watermarkName] = watermark;
+      }
+      return buildRepo(
+          storage: storage,
+          settings: settings,
+          stats: FakeStats(),
+          backup: FakeBackup());
+    }
+
+    test('云端无 manifest → null（静默）', () async {
+      final repo = buildRepo(
+          storage: FakeSyncStorage(),
+          settings: FakeSettings(),
+          stats: FakeStats(),
+          backup: FakeBackup());
+      expect(await repo.probeNewerSnapshot(), isNull);
+    });
+
+    test('latest == 本机水位 → null（本机已是最新，不打扰）', () async {
+      final repo = repoWith(
+        watermark: 'wordmem_20260901T000000Z.zip',
+        latestName: 'wordmem_20260901T000000Z.zip',
+      );
+      expect(await repo.probeNewerSnapshot(), isNull);
+    });
+
+    test('latest != 水位 → 返回该快照（提示下载）', () async {
+      final repo = repoWith(
+        watermark: 'wordmem_20260901T000000Z.zip',
+        latestName: 'wordmem_20260902T000000Z.zip',
+      );
+      final e = await repo.probeNewerSnapshot();
+      expect(e, isNotNull);
+      expect(e!.name, 'wordmem_20260902T000000Z.zip');
+    });
+
+    test('本机从未同步过（无水位）→ 云端有备份就提示', () async {
+      final repo = repoWith(
+        watermark: null,
+        latestName: 'wordmem_20260902T000000Z.zip',
+      );
+      expect((await repo.probeNewerSnapshot())?.name,
+          'wordmem_20260902T000000Z.zip');
+    });
+
+    test('云端索引损坏 → null 且全程不写云端（只读语义）', () async {
+      final storage = FakeSyncStorage();
+      storage.files['/wordmem/manifest.json'] =
+          Uint8List.fromList(utf8.encode('not json at all'));
+      storage.seedZip('wordmem_20260901T000000Z.zip');
+      final repo = buildRepo(
+          storage: storage,
+          settings: FakeSettings(),
+          stats: FakeStats(),
+          backup: FakeBackup());
+
+      expect(await repo.probeNewerSnapshot(), isNull);
+      expect(storage.ops.where((o) => o.startsWith('write:')), isEmpty);
+    });
   });
 
   group('upload（§2.4 / §8.6 顺序不变量 / §8.5 清理规则）', () {

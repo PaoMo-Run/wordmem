@@ -391,8 +391,9 @@ class BackupRepository {
         if (newWid == null) continue;
         _db.vocab.execute(
           '''INSERT INTO review_logs
-             (user_word_id, rating, state, elapsed_days, scheduled_days, reviewed_at)
-             VALUES (?, ?, ?, ?, ?, ?)''',
+             (user_word_id, rating, state, elapsed_days, scheduled_days, reviewed_at,
+              score, timeouts, kind)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
           [
             newWid,
             log['rating'] ?? 0,
@@ -400,6 +401,11 @@ class BackupRepository {
             log['elapsed_days'],
             log['scheduled_days'],
             log['reviewed_at'],
+            // v2.1.8 三列：旧备份里没有 → 取安全默认值
+            // （timeouts / kind 是 NOT NULL，必须给值；score 可为空）
+            log['score'],
+            log['timeouts'] ?? 0,
+            (log['kind'] as String?) ?? 'review',
           ],
         );
         logsAdded++;

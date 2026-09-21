@@ -114,36 +114,39 @@ class WordDao {
 
   // ───────────────── 熟练词抽检（v2.1.6） ─────────────────
 
-  /// 抽检候选：取「冷却期已过 且 最久未抽」的前 [windowSize] 个。
-  /// 数量不足 [fallbackLimit] 时放宽时间条件补齐（池子太小时的降级路径）。
+  /// 抽检候选：**全部冷却期已过**的已掌握词，按 due 升序（最久未抽在前）。
   ///
-  /// 排序键 due 在抽检语义下表示「下次可抽检时间」——被抽中后推后，
-  /// 因此 due 最早的即最久未被抽到的词，保证不会有词被漏掉。
-  List<Map<String, dynamic>> pickMasteredQuizCandidates({
-    required int windowSize,
-    required int fallbackLimit,
-  }) {
+  /// v2.1.7 起不再截「前 N 个窗口」：随机化配比改由
+  /// [AppConstants.orderTimeWeight] 的混合打分控制（见
+  /// `ReviewRepository.blendByTimeWeight`），而打分需要**全体候选的时间名次**
+  /// 才成立——先截窗口会让窗口外的词名次失真，等于把时间权重重新钉回 1.0。
+  /// 调用方取到候选后自行打分、取前 5 个。
+  ///
+  /// ⚠️ v2.1.7 修复：原实现带一条 fallback——冷却期内的候选不足 5 个时，
+  /// 会**丢掉 `due <= now` 条件**硬凑数量。对"已掌握词刚好 5 个"的用户后果是：
+  /// 每轮抽检都抽走这 5 个（due 推后 15 天）→ 下一轮 ready 为空 → 又走 fallback
+  /// 把这 5 个原样还回来，于是无论抽多少次永远是同一批词（只是顺序随机）。
+  /// 宁可本次不抽检，也不放行冷却期内的词：池子小是数据现状，
+  /// 不是可以打破冷却期的理由。
+  List<Map<String, dynamic>> pickMasteredQuizCandidates() {
     final now = DateTime.now().toUtc().toIso8601String();
-    final ready = _v
-        .select(
-          '''SELECT * FROM user_words
-         WHERE card_state = 'mastered' AND due <= ?
-         ORDER BY due ASC LIMIT ?''',
-          [now, windowSize],
-        )
-        .map((r) => r as Map<String, dynamic>)
-        .toList();
-    if (ready.length >= fallbackLimit) return ready;
-
     return _v
         .select(
           '''SELECT * FROM user_words
-         WHERE card_state = 'mastered'
-         ORDER BY due ASC LIMIT ?''',
-          [fallbackLimit],
+         WHERE card_state = 'mastered' AND due <= ?
+         ORDER BY due ASC''',
+          [now],
         )
         .map((r) => r as Map<String, dynamic>)
         .toList();
+  }
+
+  /// 已掌握词总数（抽检冷却期是否缩短的判据，v2.1.7）
+  int countMastered() {
+    return _v
+        .select(
+            "SELECT COUNT(*) AS c FROM user_words WHERE card_state = 'mastered'")
+        .first['c'] as int;
   }
 
   /// 抽检状态回写：只更新 due（下次可抽检时间）与 difficulty（失败计数），
@@ -191,10 +194,26 @@ class WordDao {
 
     final whereClause =
         where.isNotEmpty ? 'WHERE ${where.join(' AND ')}' : '';
+    // v2.1.7：① 支持升/降两个方向；② **按到期时间排序时已掌握词固定排最后**。
+    //
+    // 为什么 mastered 要最后：它们的 `due` 语义是「下次可抽检时间」而非复习排期，
+    // 而且是最近才被拉到当前附近（自愈），按 due 升序会整批挤到最前面 ——
+    // 用户想看的「最近要复习的词」反被顶下去（真机反馈 2026-09-17）。
+    const masteredLast = "CASE WHEN card_state = 'mastered' THEN 1 ELSE 0 END";
+    // v2.1.9：`last_review` 对**从未复习过的新词是 NULL**，统一排到最后
+    // （它们没有"上次复习时间"这个属性，把 NULL 当最小值会让"久 → 近"一开始
+    //  全是新词，看不出排序效果）。与 masteredLast 同理，不依赖升/降方向。
+    const neverReviewedLast =
+        'CASE WHEN last_review IS NULL THEN 1 ELSE 0 END';
     final orderBy = switch (sortBy) {
-      'due' => 'due ASC',
-      'word' => 'word COLLATE NOCASE ASC',
-      'created' => 'created_at DESC',
+      'due' || 'due_asc' => '$masteredLast, due ASC',
+      'due_desc' => '$masteredLast, due DESC',
+      'last_review' || 'last_review_desc' =>
+        '$neverReviewedLast, last_review DESC',
+      'last_review_asc' => '$neverReviewedLast, last_review ASC',
+      'word' || 'word_asc' => 'word COLLATE NOCASE ASC',
+      'word_desc' => 'word COLLATE NOCASE DESC',
+      'created_asc' => 'created_at ASC',
       _ => 'created_at DESC',
     };
 
@@ -202,6 +221,33 @@ class WordDao {
     args.add(limit);
     args.add(offset);
     return _v.select(sql, args);
+  }
+
+  /// 待处理量的**唯一口径（v2.1.7）**：首页按钮 / 复习中心 / 通知文案 / 复习队列
+  /// 必须全部用它，否则会出现「按钮显示 N 个词、点进去却暂无待复习单词」。
+  ///
+  /// ⚠️ 两条不变量：
+  /// 1. **`mastered` 必须排除**——已掌握词的 `due` 是「下次可抽检时间」而非复习排期
+  ///    （抽检池由 `ReviewRepository.pickMasteredQuizWords` 单独管理）。
+  ///    真机反馈 2026-09-17：自愈把 52 个已掌握词的 due 拉到当前后，首页按钮凭空
+  ///    多出 52 个待复习，点进去是空的。
+  /// 2. 两个切片互斥且穷尽「到期且非已掌握」集合：`dueNew`（新词）+ `dueReview`
+  ///    （非新词非已掌握），两者之和 == 复习队列里会出现的词数。
+  static const String dueNewWhere = "due <= ? AND card_state = 'new'";
+  static const String dueReviewWhere =
+      "due <= ? AND card_state NOT IN ('new', 'mastered')";
+
+  /// 待处理词数（新词 + 待复习，与复习队列同口径）
+  ///
+  /// 注意：复习队列有 `limit`（`getReviewQueue(limit: 500)`），
+  /// 因此待处理数 > limit 时，本值可能大于实际一次能刷到的词数。
+  int countPendingQueue() {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final row = _v.select(
+      'SELECT COUNT(*) AS c FROM user_words WHERE $dueNewWhere OR $dueReviewWhere',
+      [now, now],
+    ).first;
+    return row['c'] as int;
   }
 
   /// 未来 [window] 内将到期的词数（首页提示用，v2.1.6）

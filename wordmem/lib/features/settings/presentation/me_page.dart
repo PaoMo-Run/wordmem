@@ -327,6 +327,8 @@ class _MePageState extends ConsumerState<MePage> {
                         : await repo.importMerge(result.files.single.path!);
                     if (importResult.success) {
                       ref.read(wordListVersionProvider.notifier).state++;
+                      // v2.1.7：整库导入会改变释义 → 近义词/词根分组需重聚类
+                      ref.read(groupVersionProvider.notifier).state++;
                     }
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(

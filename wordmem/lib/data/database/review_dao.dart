@@ -42,6 +42,11 @@ class ReviewDao {
   }
 
   /// 插入复习记录
+  ///
+  /// v2.1.8 新增三列：
+  /// - [score]：本轮测验得分 0–6（抽检记录为 null，它只有对错）
+  /// - [timeouts]：本轮超时的环节数 0–3
+  /// - [kind]：'review' 常规三环节测验 ｜ 'quiz' 熟练词抽检
   void insert({
     required int userWordId,
     required int rating,
@@ -49,12 +54,26 @@ class ReviewDao {
     double? elapsedDays,
     double? scheduledDays,
     required String reviewedAt,
+    int? score,
+    int timeouts = 0,
+    ReviewKind kind = ReviewKind.review,
   }) {
     _v.execute(
       '''INSERT INTO review_logs
-         (user_word_id, rating, state, elapsed_days, scheduled_days, reviewed_at)
-         VALUES (?, ?, ?, ?, ?, ?)''',
-      [userWordId, rating, state, elapsedDays, scheduledDays, reviewedAt],
+         (user_word_id, rating, state, elapsed_days, scheduled_days, reviewed_at,
+          score, timeouts, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+      [
+        userWordId,
+        rating,
+        state,
+        elapsedDays,
+        scheduledDays,
+        reviewedAt,
+        score,
+        timeouts,
+        kind.value,
+      ],
     );
   }
 

@@ -31,8 +31,21 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   String? _tagFilter;
   bool _favoriteOnly = false;
   bool _quizOnly = false;
-  /// 排序方式（v2.1.6）：'created' 添加时间（默认）/ 'due' 到期时间 / 'word' 字母
-  String? _sortBy = 'created';
+  /// 排序方式（v2.1.9）：'created' 添加时间（默认）/ 'due' 到期时间 /
+  /// 'lastReview' 上次复习时间 / 'word' 字母
+  String _sortBy = 'created';
+  /// 升降序：由筛选栏最右侧的箭头图标切换；默认方向随类型走
+  /// （添加时间 新→旧 / 到期时间 近→远 / 上次复习 近→久 / 字母 A→Z）
+  bool _sortAsc = false;
+
+  /// 传给 DAO 的排序键（DAO 侧同时保证「按到期排序时已掌握词排最后」、
+  /// 「按上次复习排序时从未复习过的新词排最后」）
+  String get _daoSortKey => switch (_sortBy) {
+        'due' => _sortAsc ? 'due_asc' : 'due_desc',
+        'lastReview' => _sortAsc ? 'last_review_asc' : 'last_review_desc',
+        'word' => _sortAsc ? 'word_asc' : 'word_desc',
+        _ => _sortAsc ? 'created_asc' : 'created_desc',
+      };
   List<Map<String, dynamic>> _words = [];
   /// 词典命中结果（词典搜索模式填充，点击跳转添加页）
   List<DictWord> _dictResults = [];
@@ -96,7 +109,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           stateFilter: _stateFilter,
           tagFilter: _tagFilter,
           favoriteOnly: _favoriteOnly,
-          sortBy: _sortBy,
+          sortBy: _daoSortKey,
         );
         final total = repo.getAllWords(limit: 100000).length;
         setState(() {
@@ -127,20 +140,42 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     _loadWords();
   }
 
-  void _onFilterChanged({
-    String? stateFilter,
-    String? tagFilter,
-    bool? favoriteOnly,
-    bool? quizOnly,
-    String? sortBy,
-  }) {
+  /// 单字段筛选回调（v2.1.7）
+  ///
+  /// 原先是「一张 map 回调 + `?? 默认值` 合并」，点任意一个芯片都会把其它筛选
+  /// 重置回默认（点收藏会把排序重置成按添加时间）。拆成单字段回调后互不影响。
+  void _setFavoriteOnly(bool v) {
+    setState(() => _favoriteOnly = v);
+    _loadWords();
+  }
+
+  void _setQuizOnly(bool v) {
+    setState(() => _quizOnly = v);
+    _loadWords();
+  }
+
+  void _setTagFilter(String? v) {
+    setState(() => _tagFilter = v);
+    _loadWords();
+  }
+
+  /// 切换排序类型：回到该类型的自然方向
+  /// （添加时间 新→旧 / 到期时间 近→远 / **上次复习 近→久** / 字母 A→Z）
+  ///
+  /// 注意：'created' 与 'lastReview' 的自然方向都是「降序（新/近在前）」，
+  /// 所以只把 due / word 视为升序。
+  void _setSortBy(String v) {
+    if (v == _sortBy) return;
     setState(() {
-      _stateFilter = stateFilter;
-      _tagFilter = tagFilter;
-      _favoriteOnly = favoriteOnly ?? false;
-      _quizOnly = quizOnly ?? false;
-      _sortBy = sortBy ?? 'created';
+      _sortBy = v;
+      _sortAsc = v == 'due' || v == 'word';
     });
+    _loadWords();
+  }
+
+  /// 切换升/降序（筛选栏最右侧的箭头图标）
+  void _toggleSortDir() {
+    setState(() => _sortAsc = !_sortAsc);
     _loadWords();
   }
 
@@ -228,12 +263,16 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
           // 筛选栏（仅我的词库模式）
           if (_scope == _SearchScope.myWords)
             FilterBar(
-              stateFilter: _stateFilter,
               tagFilter: _tagFilter,
               favoriteOnly: _favoriteOnly,
               quizOnly: _quizOnly,
               sortBy: _sortBy,
-              onChanged: _onFilterChanged,
+              sortAsc: _sortAsc,
+              onFavoriteOnlyChanged: _setFavoriteOnly,
+              onQuizOnlyChanged: _setQuizOnly,
+              onTagFilterChanged: _setTagFilter,
+              onSortByChanged: _setSortBy,
+              onSortDirToggled: _toggleSortDir,
             ),
           // 正文视图：按搜索范围分流
           Expanded(

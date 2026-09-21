@@ -62,12 +62,6 @@ class FsrsCard {
         elapsedDays: (m['elapsed_days'] as num?)?.toDouble() ?? 0,
         scheduledDays: (m['scheduled_days'] as num?)?.toDouble() ?? 0,
       );
-
-  /// 加速态（仅**未掌握**时有意义）：0 = 无跳过 ｜ 1 = 已跳过 T2 ｜ 2 = 已跳过 T2+T4。
-  ///
-  /// v2.1.6：`difficulty` 字段按 `card_state` 承载两套**互斥**语义——
-  /// 未掌握 → 跳过加速态；已掌握 → 熟练词抽检的失败计数。此处统一封装读取。
-  int get skipState => state == CardState.mastered ? 0 : difficulty.toInt();
 }
 
 /// 排程结果
@@ -89,14 +83,13 @@ class ScheduleResult {
 /// - `stability` 复用为"当前周期间隔天数"，用于遗忘曲线计算
 /// - 遗忘曲线：R(t) = e^(-t/S)，S 为当前间隔（记忆强度）
 ///
-/// 评分规则（评分驱动周期推进 / 重做）：
-/// - 没想起来 (again) → lapses+1，**重做当前周期**（1 分钟后即可再复习）
-/// - 困难 (hard)      → 保持当前周期不变
-/// - 正确 (good)      → 进入下一周期
-/// - 很轻松 (easy)    → 跳过一档，加速（+2，封顶第 7 周期）
+/// 评分规则（v2.1.8：**评分不再驱动排期**）
+/// - 所有词固定按 T0→T1→…→T7 顺序**完整走完 8 个节点**，每次测验推进一格
+/// - `rating`（again/hard/good/easy）只作为复习记录的评分写入，不影响间隔
+/// - 原「很轻松 → 跳过一档」的加速机制已于 v2.1.8 取消（记忆率下降的补救）
 ///
-/// 状态映射：reps==0 → 新词，reps 1~3 → 学习中（分钟/小时级），
-///           reps 4~7 → 复习中，完成第 7 周期 → 已掌握（mastered）。
+/// 状态映射：reps==0 → 新词，reps 1~3 → 学习中（小时级），
+///           reps 4~7 → 复习中，完成第 8 次测验（reps 越过 T7）→ 已掌握（mastered）。
 class FsrsService {
   /// T0–T7 八节点固定时间线（v2.1.6 用户确认版）。
   ///
@@ -166,46 +159,17 @@ class FsrsService {
       return ScheduleResult(card: card, retrievability: retrievability);
     }
 
-    // ── T0–T7 推进规则（v2.1.6 用户确认版）──
+    // ── T0–T7 固定推进（v2.1.8：**取消「熟练跳过」**）──
     //
-    // reps = 下一个要执行的节点序号（0..8；跳过时跳号）
-    // skipState（复用 difficulty，未掌握时的语义）= 加速态：
-    //   0 = 无跳过 ｜ 1 = 已跳过 T2 ｜ 2 = 已跳过 T2 + T4
+    // 规则：**所有词都必须完整走完 8 个节点（T0..T7）**，每次测验固定推进一格。
+    // 取消原因：原「三环节全对 → 跳过 T2 / T4」会让答得好的词少做 1~2 次测验，
+    // 用户实测记忆率下降，故改为不跳档，八次一次不落。
     //
-    // 规则：
-    // - **所有测验结果都会推进**到下一个节点（取消"重做当前节点"）
-    // - **只有三环节全对（easy）才解锁跳过**
-    // - T1 全对 → 跳过 T2，直达 T3
-    // - T3 全对（且 T1 全对过）→ 跳过 T4，直达 T5
-    // - T1 未全对 → 全程不再允许跳过
-    // - 超期不改变档位、不补做错过的节点；due 按本次实际测验时刻顺延
-    var reps = card.reps;
-    var skipState = card.skipState;
-    final allCorrect = rating == ReviewRating.easy;
-
-    final int next;
-    final Duration interval;
-    if (reps <= 0) {
-      next = 1; // T0 完成 → T1
-      interval = intervalForReps(1); // 1h
-    } else if (reps == 1 && allCorrect) {
-      // T1 全对 → 跳过 T2。被跳过的档位仍占时间：3h(T2) + 5h(T3) = 8h
-      next = 3;
-      skipState = 1;
-      interval = t0t7Intervals[1] + t0t7Intervals[2];
-    } else if (reps == 3 && skipState >= 1 && allCorrect) {
-      // T3 全对（且 T1 全对过）→ 跳过 T4，直接按 T5 档等待（1 天，
-      // 不累计 T4 的 12h）—— 这是「答得好就更快」的真正落点
-      next = 5;
-      skipState = 2;
-      interval = t0t7Intervals[4];
-    } else {
-      // T3 未全对但此前已跳过 T2 → **撤销跳过资格**：
-      // 回到「不跳过」的映射与路线（用户确认的语义）
-      if (reps == 3 && skipState == 1) skipState = 0;
-      next = reps + 1;
-      interval = intervalForReps(next);
-    }
+    // ⚠️ 因此 `rating` **不再参与任何排期计算**：它只按新的 0–6 分评分体系
+    // 写进复习记录（供「单词详情 → 复习历史」展示），不影响下次间隔。
+    // 这与「必须完整 8 次」是一体的：间隔固定，次数才固定。
+    final next = card.reps + 1;
+    final interval = intervalForReps(next);
 
     // 走完 T7 → 永久掌握，转入「熟练词抽检」池
     if (next > t0t7Intervals.length) {
@@ -230,7 +194,9 @@ class FsrsService {
     final newCard = card.copyWith(
       state: newState,
       stability: newStability,
-      difficulty: skipState.toDouble(), // 未掌握时承载加速态
+      // v2.1.8：未掌握词的 `difficulty` 不再承载「跳过加速态」，恒写 0
+      // （已掌握词的 `difficulty` 仍是抽检失败计数，与本函数无关）
+      difficulty: 0,
       reps: next,
       lapses: card.lapses,
       due: now.add(interval),

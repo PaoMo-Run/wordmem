@@ -91,20 +91,16 @@ class LoadingIndicator extends StatelessWidget {
   }
 }
 
-/// 熟练度档位颜色（v2.1.6：按 T0–T7 节点映射的 4 档）
+/// 熟练度档位颜色（按 T0–T7 节点映射的 4 档，1 档最浅 → 4 档最深）
 ///
-/// `difficulty` 在未掌握时承载跳过加速态；1 档最浅 → 4 档最深。
+/// v2.1.8：取消「熟练跳过」后档位只由节点进度决定，`difficulty` 不再参与。
 Color masteryColor(
   String cardState,
   int reps,
-  int lapses, {
-  double difficulty = 0,
-}) {
+  int lapses,
+) {
   if (cardState == 'mastered') return AppColors.statusMastered;
-  final level = MasteryStatus.levelOf(
-    reps: reps,
-    skipState: difficulty.toInt(),
-  );
+  final level = MasteryStatus.levelOf(reps: reps);
   return switch (level) {
     1 => AppColors.statusNew,
     2 => AppColors.statusLearning,
@@ -117,11 +113,8 @@ Color masteryColor(
 String masteryLabel(
   String cardState,
   int reps,
-  int lapses, {
-  double difficulty = 0,
-}) {
+  int lapses,
+) {
   if (cardState == 'mastered') return MasteryStatus.level4.label;
-  return MasteryStatus.fromLevel(
-    MasteryStatus.levelOf(reps: reps, skipState: difficulty.toInt()),
-  ).label;
+  return MasteryStatus.fromLevel(MasteryStatus.levelOf(reps: reps)).label;
 }

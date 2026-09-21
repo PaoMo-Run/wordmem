@@ -64,6 +64,16 @@ class _MasteredQuizPageState extends ConsumerState<MasteredQuizPage> {
           icon: const Icon(Icons.close),
           onPressed: _close,
         ),
+        // v2.1.8：卡片内的「跳过」按钮已删除，本页没有复习页那样的「下一题」导航行，
+        // 因此在此补一个等价入口——否则遇到不会的词只能乱填（会被判错）。
+        actions: [
+          if (!_finished)
+            TextButton.icon(
+              onPressed: _advance,
+              icon: const Icon(Icons.skip_next, size: 18),
+              label: const Text('跳过'),
+            ),
+        ],
       ),
       body: _finished ? _buildResult() : _buildQuiz(),
     );
@@ -83,7 +93,6 @@ class _MasteredQuizPageState extends ConsumerState<MasteredQuizPage> {
           showHint: true,
           onAnswered: _onAnswered,
           onNext: _advance,
-          onSkip: _advance,
           isLast: _index == _total - 1,
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
