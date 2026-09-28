@@ -67,6 +67,25 @@ class ReviewRepository {
   /// （2026-09-17 真机反馈：自愈把 52 个已掌握词的 due 拉到当前后凭空多出 52）。
   int get pendingCount => _wordDao.countPendingQueue();
 
+  /// 「提前背」队列（v2.1.11）：只取**未来 [window] 内到期**的词。
+  ///
+  /// 场景：用户预知接下来几小时没法复习（要开会、赶车、断网），想把马上要到期的
+  /// 词先推一轮。复习结果按**正常流程**提交（推进 T 节点、写复习记录），
+  /// 因此之后它们不会再出现在今天的待复习里。
+  ///
+  /// 与 [getReviewQueue] 的三点差别：
+  /// - **不含已到期词**（那些属于正常复习队列，用户可以直接做）；
+  /// - **不做时间权重打乱**：提前背的价值就在于"按到期先后一口气推完"，
+  ///   谁最快要到期本身就是要传达的信息，打乱反而无从判断；
+  /// - 窗口与首页提示共用 [AppConstants.upcomingDueWindowHours]，
+  ///   且 DAO 侧 WHERE 条件与计数查询严格一致（不会"数字对不上"）。
+  List<Map<String, dynamic>> getUpcomingQueue({
+    Duration window =
+        const Duration(hours: AppConstants.upcomingDueWindowHours),
+    int limit = 100,
+  }) =>
+      _wordDao.getDueWithin(window, limit: limit);
+
   /// 提交一轮测验（事务操作）。
   ///
   /// v2.1.8：排期已与评分**解耦**（固定走满 T0–T7 八个节点，取消跳过），

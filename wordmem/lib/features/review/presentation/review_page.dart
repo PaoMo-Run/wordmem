@@ -21,7 +21,14 @@ import 'widgets/quiz_cards.dart';
 /// 2. 选单词（看中文释义四选一）
 /// 3. 默写（看释义/首字母拼写）
 class ReviewPage extends ConsumerStatefulWidget {
-  const ReviewPage({super.key});
+  /// v2.1.11：**提前背**模式 —— 只复习「未来 3 小时内到期」的词。
+  /// 由首页「提前背」按钮经 `/review?mode=early` 进入。
+  ///
+  /// 与普通模式共用同一套三环节 / 分组 / 统计页 / 抽检流程，
+  /// 差别只在**队列来源**与**临时存档键**（两者不能互相覆盖，见 [_tempSaveKey]）。
+  final bool early;
+
+  const ReviewPage({super.key, this.early = false});
 
   @override
   ConsumerState<ReviewPage> createState() => _ReviewPageState();
@@ -34,7 +41,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   List<Map<String, dynamic>> _allQueue = [];
   int _groupIndex = 0;
   static const int _groupSize = 50;
-  static const String _tempSaveKey = 'review_temp_save_v1';
+  /// 临时存档键。
+  ///
+  /// v2.1.11：**提前背用独立的存档键** —— 两种模式的队列完全不同，
+  /// 如果共用一个键，用户在普通复习做到一半时去点「提前背」，就会把
+  /// 普通复习的存档覆盖掉（回来后进度全丢）。
+  String get _tempSaveKey =>
+      widget.early ? 'review_temp_save_v1_early' : 'review_temp_save_v1';
   /// v2.1.8：临时存档格式版本。旧档（无该字段）= v1，按「不洗牌」兼容读取。
   static const int _saveVersion = 2;
 
@@ -118,7 +131,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     setState(() => _loading = true);
     try {
       final repo = ref.read(reviewRepositoryProvider);
-      _allQueue = repo.getReviewQueue(limit: 500);
+      // v2.1.11：提前背只取「未来 3 小时内到期」的词（按 due 由近到远）
+      _allQueue = widget.early
+          ? repo.getUpcomingQueue()
+          : repo.getReviewQueue(limit: 500);
 
       // v2.1.5：存在临时存档时询问是否继续上次进度
       final prefs = await ref.read(sharedPreferencesProvider.future);
@@ -1099,7 +1115,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       return Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('今日复习'),
+          title: Text(widget.early ? '提前背' : '今日复习'),
           backgroundColor: Colors.transparent,
         ),
         body: const Stack(
@@ -1118,7 +1134,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   Widget _buildEmpty() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('今日复习'),
+        title: Text(widget.early ? '提前背' : '今日复习'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -1126,8 +1142,12 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       ),
       body: EmptyState(
         icon: Icons.check_circle_outline,
-        title: _reviewedCount > 0 ? '复习完成！' : '暂无待复习单词',
-        subtitle: _reviewedCount > 0 ? '本次复习了 $_reviewedCount 个单词' : '稍后再来看看吧',
+        title: _reviewedCount > 0
+            ? '复习完成！'
+            : (widget.early ? '未来 3 小时没有词到期' : '暂无待复习单词'),
+        subtitle: _reviewedCount > 0
+            ? '本次复习了 $_reviewedCount 个单词'
+            : (widget.early ? '这些词还没到复习时间，到点再来' : '稍后再来看看吧'),
         actionLabel: '返回',
         onAction: () => context.pop(),
       ),

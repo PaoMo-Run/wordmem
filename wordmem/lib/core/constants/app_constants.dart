@@ -9,7 +9,7 @@ class AppConstants {
   ///
   /// ⚠️ 仅作兜底/元数据用：UI 展示请优先用 PackageInfo 实时读取
   /// （about_page / me_page），避免发版时忘记同步此处。
-  static const String appVersion = '2.1.10';
+  static const String appVersion = '2.1.11';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。

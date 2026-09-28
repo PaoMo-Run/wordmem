@@ -264,6 +264,22 @@ class WordDao {
     return row['c'] as int;
   }
 
+  /// 未来 [window] 内将到期的词（「提前背」用，v2.1.11）。
+  ///
+  /// ⚠️ **WHERE 条件必须与 [countDueWithin] 严格一致** —— 首页按钮上的数字
+  /// 就来自那个计数，两边口径一旦漂移就会出现"按钮说 12 个、点进去却是 9 个"。
+  /// 排除已掌握词（它们的 due 是「下次可抽检时间」，语义不同）。
+  /// 按 due 升序：最先到期的先复习。
+  List<Map<String, dynamic>> getDueWithin(Duration window, {int limit = 100}) {
+    final now = DateTime.now().toUtc();
+    return _v.select(
+      """SELECT * FROM user_words
+         WHERE due > ? AND due <= ? AND card_state != 'mastered'
+         ORDER BY due ASC LIMIT ?""",
+      [now.toIso8601String(), now.add(window).toIso8601String(), limit],
+    );
+  }
+
   /// 获取待复习单词（due <= now，排除新词与已掌握）
   List<Map<String, dynamic>> getDueWords({int limit = 100}) {
     final now = DateTime.now().toUtc().toIso8601String();

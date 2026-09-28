@@ -97,7 +97,9 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/review',
       name: 'review',
-      builder: (context, state) => const ReviewPage(),
+      // v2.1.11：`?mode=early` = 提前背（只复习未来 3 小时内到期的词）
+      builder: (context, state) =>
+          ReviewPage(early: state.uri.queryParameters['mode'] == 'early'),
     ),
     GoRoute(
       path: '/custom-review',

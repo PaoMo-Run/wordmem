@@ -111,6 +111,58 @@ class _TodayContentState extends ConsumerState<_TodayContent>
     }
   }
 
+  // ───────────── 提前背（v2.1.11）─────────────
+
+  /// 「提前背」：把**未来 3 小时内到期**的词现在就先复习一轮。
+  ///
+  /// 场景：用户预知接下来几小时没法复习（开会 / 赶车 / 断网），
+  /// 与其让这些词过期堆积，不如提前把复习阶段推进一格。
+  ///
+  /// 三重保护：
+  /// 1. 按钮在计数为 0 时置灰；
+  /// 2. 这里再**兜一次空**（provider 可能在按钮渲染后过期）；
+  /// 3. **二次确认弹窗**明确告知"会立即开始一轮完整测验、并推进复习阶段"。
+  ///
+  /// 复习结果走的是**正常提交流程**（`submitReview` → FSRS 推进 T 节点 →
+  /// 写复习记录），不是自选复习那种纯练习。完成后这些词的 `due` 已被推后，
+  /// 所以不会再出现在今天的待复习里。
+  Future<void> _confirmEarlyReview() async {
+    final count = ref.read(upcomingDueCountProvider).valueOrNull ?? 0;
+    if (count <= 0) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('未来 3 小时没有词到期')));
+      return;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('提前背这 $count 个词？'),
+        content: const Text(
+          '它们会在未来 3 小时内陆续到期。提前复习会立即开始一轮完整测验'
+          '（英译汉 → 选单词 → 默写，和平时一样），并正常推进各自所属的复习阶段。\n\n'
+          '做完后这些词今天就不会再出现了。适合预知接下来没空复习的情况。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('再等等'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('开始'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || ok != true) return;
+
+    await context.push('/review?mode=early');
+    // 回来后重算统计与"未来 3 小时"窗口（做完的词 due 已被推后）
+    if (mounted) await _refreshAll();
+  }
+
   // ───────────── 启动时云端备份探测（v2.1.7）─────────────
 
   /// 冷启动时静默对比云端备份与本机水位（设计点 1~6）。
@@ -275,7 +327,13 @@ class _TodayContentState extends ConsumerState<_TodayContent>
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 116),
         children: [
-          _TodayHero(stats: stats, streak: _streak, upcoming: upcoming),
+          _TodayHero(
+            stats: stats,
+            streak: _streak,
+            upcoming: upcoming,
+            // v2.1.11：提前背（计数为 0 时按钮自身置灰）
+            onEarlyReview: _confirmEarlyReview,
+          ),
           const SizedBox(height: 14),
           _PrimaryAction(stats: stats),
           const SizedBox(height: 26),
@@ -298,11 +356,14 @@ class _TodayHero extends StatelessWidget {
   final int streak;
   /// 未来 3 小时内将到期的词数（v2.1.6）；null = 尚未就绪，整行不展示
   final int? upcoming;
+  /// v2.1.11：「提前背」的点击回调（null = 不展示按钮）
+  final VoidCallback? onEarlyReview;
 
   const _TodayHero({
     required this.stats,
     required this.streak,
     this.upcoming,
+    this.onEarlyReview,
   });
 
   String get _greeting {
@@ -420,6 +481,23 @@ class _TodayHero extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // v2.1.11：提前背 —— 预知接下来没空复习时，把马上要到期的词先推一轮。
+                  // 窗口内没有词时按钮置灰（点击时还会再兜一次，见 _confirmEarlyReview）。
+                  if (onEarlyReview != null)
+                    TextButton(
+                      onPressed: upcoming! > 0 ? onEarlyReview : null,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: const Text('提前背'),
+                    ),
                 ],
               ),
             ],
