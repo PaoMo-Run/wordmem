@@ -316,12 +316,23 @@ class BackupRepository {
 
   /// 随备份恢复的学习相关 app_settings 白名单键。
   /// 设备偏好（主题/提醒等）不属于学习数据，不随备份迁移。
+  /// v2.2.0 阶段 C：学习节奏配置（9 个 `tune.*` 键）随备份迁移——
+  /// ⚠️ 它们的值不是 JSON map，续写合并时必须跳过 JSON 合并（见 _restoreSettings）。
   static const Set<String> _syncSettingsKeys = {
     'synonym_group_mastery',
     'root_mastery',
     'synonym_blacklist',
     'root_blacklist',
     'root_excluded',
+    'tune.version',
+    'tune.preset',
+    'tune.timeline',
+    'tune.upcoming_hours',
+    'tune.quiz_count',
+    'tune.quiz_correct_days',
+    'tune.quiz_wrong_days',
+    'tune.quiz_skip_days',
+    'tune.quiz_short_cooldown_days',
   };
 
   /// 把 zip 内读出的词条/复习记录/学习设置/日记写入当前词库。
@@ -434,7 +445,11 @@ class BackupRepository {
       final newVal = s['value'] as String?;
       if (key == null || newVal == null) continue;
       var finalVal = newVal;
-      if (skipExisting) {
+      // tune.*（学习节奏）的值不是 JSON map：时间线是 JSON 数组（并入会变
+      // 16 段直接崩）、天数是裸数字（merge 取 max 会把用户调小的值拉回大的），
+      // 一律跳过合并直接覆盖。
+      final doMerge = skipExisting && !key.startsWith('tune.');
+      if (doMerge) {
         final rows = _db.vocab
             .select('SELECT value FROM app_settings WHERE key = ?', [key]);
         if (rows.isNotEmpty) {

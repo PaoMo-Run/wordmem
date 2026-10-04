@@ -206,7 +206,7 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: GlassContainer(
-            onTap: () => _startRootChallenge(m),
+            onTap: () => _startRootChallenge(m, i),
             // 列表条目：静态玻璃（blur 0）
             blur: 0,
             elevated: false,
@@ -250,7 +250,7 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
                 MasteryBadge(level: rm),
                 const SizedBox(width: 8),
                 GlassButton(
-                  onPressed: () => _startRootChallenge(m),
+                  onPressed: () => _startRootChallenge(m, i),
                   label: '测试',
                   blur: 0,
                   height: 46,
@@ -264,9 +264,14 @@ class _WordGroupMemoryPageState extends ConsumerState<WordGroupMemoryPage> {
     );
   }
 
-  Future<void> _startRootChallenge(RootMatch match) async {
+  Future<void> _startRootChallenge(RootMatch match, int index) async {
+    // v2.2.0 需求3：payload 传 matches+index，挑战页结果可「下一词根」连续测试
     // await 返回后显式重载（双保险），词根熟悉度变化立即反映
-    await context.push('/root-challenge', extra: match);
+    await context.push('/root-challenge', extra: {
+      'match': match,
+      'matches': _rootMatches,
+      'index': index,
+    });
     if (mounted) _load();
   }
 }

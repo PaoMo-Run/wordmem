@@ -131,8 +131,8 @@ class _MasteredQuizPageState extends ConsumerState<MasteredQuizPage> {
             if (wrong.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
-                '这 ${wrong.length} 个词会在本轮「重做错题」里再来一次；'
-                '若重测仍答错，将退回复习队列（从 T3 重新走周期）。',
+                '这 ${wrong.length} 个词会安排重测；'
+                '若重测仍答错，将退回复习队列（从 T4 重新走周期）。',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,

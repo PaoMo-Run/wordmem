@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -54,6 +55,9 @@ class AppDatabase {
     // 4.5 复习算法迁移（艾宾浩斯 7 周期）：老 8 档 reps → 新 7 档
     _migrateSchedule();
 
+    // 4.5.1 复习算法迁移（v2.2.0 T0–T8 九节点）：review 态 reps>=8 钳回 7
+    _migrateScheduleV8();
+
     // 4.6 存量已掌握词 due 自愈（v2.1.7）：把 v2.1.5 fuse 遗留的「10 年后」拉回当前
     _healLegacyMasteredDue();
 
@@ -63,6 +67,28 @@ class AppDatabase {
     // 6. 完整性检查
     _verifyIntegrity();
 
+    _initialized = true;
+  }
+
+  /// 仅测试用（v2.2.0 阶段 C）：内存库 + 全量建表 + 迁移链，
+  /// 不碰文件系统与词典资产（`init()` 里那两步依赖 path_provider / rootBundle，
+  /// 宿主测试环境跑不了）。
+  ///
+  /// `_dictDb` 指向同一内存连接：测试路径不读词典，这里只为保证 `close()`
+  /// 不因 LateInitializationError 崩（sqlite3 的 dispose 幂等）。
+  @visibleForTesting
+  void initForTest() {
+    if (_initialized) return;
+    _vocabDb = sqlite3.openInMemory();
+    _vocabDb.execute('PRAGMA foreign_keys=ON;');
+    _vocabDb.execute('PRAGMA temp_store=MEMORY;');
+    _createSchema();
+    _migrateSchedule();
+    _migrateScheduleV8();
+    _healLegacyMasteredDue();
+    _initDefaultData();
+    _verifyIntegrity();
+    _dictDb = _vocabDb;
     _initialized = true;
   }
 
@@ -283,9 +309,66 @@ END;
     }
   }
 
-  /// fuse 遗留值的判定阈值：远超正常抽检排期上限（答对 15 天）。
+  /// fuse 遗留值的判定阈值：远超正常抽检排期上限（答对冷却默认 10 天、可调上限 60 天）。
   /// 留 365 天是为了让"正常数据会不会被误伤"这个问题有**数学上的**答案。
   static const Duration legacyMasteredDueThreshold = Duration(days: 365);
+
+  /// v2.2.0 T0–T8 迁移判据（纯函数，便于单测）。
+  ///
+  /// 九节点下 `reps=8`（等待 T8）是**合法中间值**；而 v2.1.x 八节点运行期，
+  /// 未掌握词的 `reps` 最多只会写到 7（掌握即转 mastered）。
+  /// 因此存量里 `reps >= 8` 的非 mastered 行只可能是历史遗留
+  /// （旧版排期表或跨版本备份恢复带回来的「T7 阶段」词）——统一钳回 7，
+  /// 让它们重测一次 T7 再自然进入 T8，语义安全（多测一次，绝不跳过）。
+  ///
+  /// ⚠️ 必须只在 v8 打标迁移内一次性执行，不可作为常驻逻辑：
+  /// 新运行期下 `reps >= 8` 是合法值。
+  static int clampLegacyRepsForT0T8(String cardState, int reps) {
+    if (cardState == 'mastered') return reps;
+    if (reps < 8) return reps;
+    return 7;
+  }
+
+  /// 复习算法迁移（v2.2.0）：八节点 T0–T7 → 九节点 T0–T8。
+  ///
+  /// 迁移内容（见 [clampLegacyRepsForT0T8]）：
+  /// - 已 mastered 的词：**保持不动**，不补走 T8（已在抽检池，抽检失败链路
+  ///   本身就是重进复习的通道；强制打回会伤害「已掌握」的用户信任）
+  /// - 在途词（reps 1~7）：原值保留，due 是绝对时间戳无需调整，自然多走一个 T8
+  /// - 非 mastered 且 reps>=8 的存量行：钳回 7（重测 T7）
+  /// 仅执行一次（app_settings 打标 `sched_ebbinghaus_v8`），幂等安全。
+  void _migrateScheduleV8() {
+    try {
+      final done = _vocabDb.select(
+        "SELECT COUNT(*) as c FROM app_settings WHERE key = 'sched_ebbinghaus_v8'",
+      ).first['c'] as int;
+      if (done > 0) return;
+
+      final rows = _vocabDb.select(
+        'SELECT id, card_state, reps FROM user_words '
+        "WHERE card_state != 'mastered' AND reps >= 8",
+      );
+      for (final r in rows) {
+        final clamped = clampLegacyRepsForT0T8(
+          r['card_state'] as String? ?? 'new',
+          r['reps'] as int? ?? 0,
+        );
+        if (clamped != (r['reps'] as int? ?? 0)) {
+          _vocabDb.execute(
+            'UPDATE user_words SET reps = ? WHERE id = ?',
+            [clamped, r['id']],
+          );
+        }
+      }
+      _vocabDb.execute(
+        '''INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at''',
+        ['sched_ebbinghaus_v8', '1', DateTime.now().toUtc().toIso8601String()],
+      );
+    } catch (_) {
+      // 迁移失败不阻塞启动，下次启动重试
+    }
+  }
 
   /// 严格形状：ISO-8601 + 显式时区（`Z` 或 `±HH:MM`）。
   ///

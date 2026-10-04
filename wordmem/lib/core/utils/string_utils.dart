@@ -49,10 +49,10 @@ class StringUtils {
     if (diff.inDays < 365) {
       final months = (diff.inDays / 30).floor();
       final restDays = diff.inDays - months * 30;
-      return '${months}个月${restDays}天前';
+      return '$months个月$restDays天前';
     }
     final years = (diff.inDays / 365).floor();
-    return '${years}年${diff.inDays - years * 365}天前';
+    return '$years年${diff.inDays - years * 365}天前';
   }
 
   /// 格式化下次复习时间（未来）
@@ -70,9 +70,9 @@ class StringUtils {
     if (diff.inDays < 365) {
       final months = (diff.inDays / 30).floor();
       final restDays = diff.inDays - months * 30;
-      return '${months}个月${restDays}天后';
+      return '$months个月$restDays天后';
     }
     final years = (diff.inDays / 365).floor();
-    return '${years}年${diff.inDays - years * 365}天后';
+    return '$years年${diff.inDays - years * 365}天后';
   }
 }

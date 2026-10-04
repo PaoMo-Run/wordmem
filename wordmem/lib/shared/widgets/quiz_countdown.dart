@@ -151,7 +151,7 @@ class QuizCountdownState extends State<QuizCountdown>
     return Semantics(
       label: overtime
           ? '本题已超时'
-          : '本题剩余 ${remainingSeconds} 秒，限时 ${widget.limit.inSeconds} 秒',
+          : '本题剩余 $remainingSeconds 秒，限时 ${widget.limit.inSeconds} 秒',
       child: SizedBox(
         // 固定高度：避免秒数从两位数变一位数时发生跳动
         height: 36,

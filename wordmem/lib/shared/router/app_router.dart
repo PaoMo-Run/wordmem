@@ -16,6 +16,7 @@ import '../../features/settings/presentation/settings_page.dart';
 import '../../features/settings/presentation/me_page.dart';
 import '../../features/settings/presentation/about_page.dart';
 import '../../features/settings/presentation/ai_config_page.dart';
+import '../../features/settings/presentation/schedule_tuning_page.dart';
 import '../../features/settings/presentation/sync_page.dart';
 import '../../features/add_word/presentation/add_word_page.dart';
 import '../../features/add_word/presentation/text_import_page.dart';
@@ -148,6 +149,11 @@ final appRouter = GoRouter(
       builder: (context, state) => const AiConfigPage(),
     ),
     GoRoute(
+      path: '/schedule-tuning',
+      name: 'scheduleTuning',
+      builder: (context, state) => const ScheduleTuningPage(),
+    ),
+    GoRoute(
       path: '/network-sync',
       name: 'networkSync',
       builder: (context, state) => const SyncPage(),
@@ -161,11 +167,30 @@ final appRouter = GoRouter(
       path: '/root-challenge',
       name: 'rootChallenge',
       builder: (context, state) {
-        final match = state.extra as RootMatch?;
-        if (match == null) {
-          return const PlaceholderPage(title: '词根挑战');
+        final extra = state.extra;
+        // v2.2.0 需求3：payload 形式（matches + index，支持「下一词根」）
+        if (extra is Map<String, dynamic>) {
+          final matches =
+              (extra['matches'] as List?)?.cast<RootMatch>() ?? const [];
+          final i = (extra['index'] as int?) ?? 0;
+          final m = extra['match'] as RootMatch? ??
+              (matches.isNotEmpty
+                  ? matches[i.clamp(0, matches.length - 1)]
+                  : null);
+          if (m == null) {
+            return const PlaceholderPage(title: '词根挑战');
+          }
+          return RootChallengePage(
+            match: m,
+            matches: matches.isNotEmpty ? matches : null,
+            index: i,
+          );
         }
-        return RootChallengePage(match: match);
+        // 兼容旧形态：直传单个 RootMatch
+        if (extra is RootMatch) {
+          return RootChallengePage(match: extra);
+        }
+        return const PlaceholderPage(title: '词根挑战');
       },
     ),
     GoRoute(

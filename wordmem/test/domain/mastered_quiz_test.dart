@@ -157,25 +157,30 @@ void main() {
   group('抽检间隔', () {
     final t = DateTime.utc(2026, 9, 16, 12);
 
-    test('答对 15 天 / 答错 3 天 / 跳过 7 天', () {
+    test('答对 10 天 / 答错 2 天 / 跳过 7 天（v2.2.0 定值）', () {
       expect(
-        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 5).inDays,
-        15,
+        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 10).inDays,
+        10,
       );
-      expect(ReviewRepository.dueAfterWrong(t).difference(t).inDays, 3);
+      expect(ReviewRepository.dueAfterWrong(t).difference(t).inDays, 2);
       expect(ReviewRepository.dueAfterSkip(t).difference(t).inDays, 7);
     });
 
-    test('池子不足 5 个词时答对冷却期缩短到 7 天（v2.1.7）', () {
+    test('池子不足单次抽检量时答对冷却期缩短到 7 天（阈值跟随抽检量）', () {
       expect(
         ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 4).inDays,
+        7,
+      );
+      // v2.2.0：单次抽检量 5 → 10，短冷却阈值跟随 —— 池子 5~9 个也走短冷却
+      expect(
+        ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 5).inDays,
         7,
       );
       expect(
         ReviewRepository.cooldownAfterCorrect(
                 masteredPoolSize: AppConstants.masteredQuizCount)
             .inDays,
-        15,
+        10,
       );
       expect(
         ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 0).inDays,
@@ -200,7 +205,7 @@ void main() {
   group('公平性模拟（时间权重 0.5）', () {
     const perRound = AppConstants.masteredQuizCount;
 
-    test('500 个词 × 每轮抽 5：足够轮次后每个词都被抽到过（不漏词）', () {
+    test('500 个词 × 每轮抽 10：足够轮次后每个词都被抽到过（不漏词）', () {
       const n = 500;
       final rnd = Random(20260916);
       final items = [for (var i = 0; i < n; i++) w(i, rnd.nextInt(1000))];
@@ -260,31 +265,149 @@ void main() {
     });
   });
 
-  group('二次失败判定（v2.1.6 修订）', () {
-    test('首次答错只标记（不降级），第二次答错才降级退回 T3', () {
+  group('二次失败判定（v2.1.6 修订；v2.2.0 打回目标改 T5）', () {
+    test('首次答错只标记（不降级），第二次答错才打回 T5 重走周期', () {
       expect(ReviewRepository.shouldDemoteOnQuizWrong(0), isFalse);
       expect(ReviewRepository.shouldDemoteOnQuizWrong(1), isTrue);
     });
 
-    test('重测答对走的是复检窗口（3 天），而不是洗白', () {
+    test('重测答对走的是复检窗口（2 天），而不是洗白', () {
       // holdMasteredQuizWrongMark 使用 dueAfterWrong —— 语义上等同于
-      // "保留失败标记 + 3 天后复检"，因此其间隔必须仍是 3 天
+      // "保留失败标记 + 2 天后复检"，因此其间隔必须仍是 2 天
       final t = DateTime.utc(2026, 9, 16, 12);
-      expect(ReviewRepository.dueAfterWrong(t).difference(t).inDays, 3);
+      expect(ReviewRepository.dueAfterWrong(t).difference(t).inDays, 2);
+    });
+  });
+
+  group('复合抽取权重（v2.2.0 需求2）', () {
+    Map<String, dynamic> row(int id, int due, Object created) =>
+        {'id': id, 'due': due, 'created_at': created};
+
+    List<int> idsOf(List<Map<String, dynamic>> rows) =>
+        [for (final r in rows) r['id'] as int];
+
+    double dueOf(Map<String, dynamic> r) => (r['due'] as num).toDouble();
+    double createdAtOf(Map<String, dynamic> r) =>
+        (r['created_at'] as num).toDouble();
+
+    test('权重常量与模拟定值一致（0.45 / 0.15 / 0.40）', () {
+      expect(AppConstants.masteryQuizWeightDue, 0.45);
+      expect(AppConstants.masteryQuizWeightCreated, 0.15);
+      expect(AppConstants.masteryQuizWeightRandom, 0.40);
+    });
+
+    test('不漏词、不重复、不改元素个数', () {
+      final rows = [row(1, 10, 100), row(2, 20, 90), row(3, 30, 80)];
+      final out = ReviewRepository.blendMasteryQuizWeights(
+        rows,
+        dueOf: dueOf,
+        createdAtOf: createdAtOf,
+        random: Random(1),
+      );
+      expect(idsOf(out)..sort(), [1, 2, 3]);
+    });
+
+    test('单元素原样返回', () {
+      expect(
+        idsOf(ReviewRepository.blendMasteryQuizWeights(
+          [row(1, 5, 5)],
+          dueOf: dueOf,
+          createdAtOf: createdAtOf,
+        )),
+        [1],
+      );
+    });
+
+    test('脏时间维度垫尾：同 due 下 created_at 哨兵值的词排最后', () {
+      // 三词 due 相同（due 名次并列 0），唯一区分维度是 created_at：
+      // C(80) < B(90) < A(哨兵垫尾=1.0) —— 平均名次必须严格 C < B < A
+      final rows = [
+        row(0, 10, double.maxFinite), // A：created_at 脏
+        row(1, 10, 90), // B
+        row(2, 10, 80), // C
+      ];
+      final sumPos = List<double>.filled(3, 0);
+      const rounds = 400;
+      for (var i = 0; i < rounds; i++) {
+        final out = ReviewRepository.blendMasteryQuizWeights(
+          rows,
+          dueOf: dueOf,
+          createdAtOf: createdAtOf,
+          random: Random(i),
+        );
+        for (var p = 0; p < out.length; p++) {
+          sumPos[out[p]['id'] as int] += p;
+        }
+      }
+      expect(sumPos[2] / rounds, lessThan(sumPos[1] / rounds),
+          reason: 'created_at 较早的 C 平均名次应优于 B');
+      expect(sumPos[1] / rounds, lessThan(sumPos[0] / rounds),
+          reason: 'created_at 脏数据的 A 该维度垫尾，平均名次应劣于 B');
+    });
+
+    test('偏向性：添加最早 + 复习最久远的词整体排名显著靠前', () {
+      // id 越小：添加越早（created_at 越小）、距上次复习越久（due 越小）
+      final rows = [
+        for (var i = 0; i < 8; i++) row(i, 10 + i * 10, i * 10),
+      ];
+      final sumPos = List<double>.filled(8, 0);
+      const rounds = 400;
+      for (var r = 0; r < rounds; r++) {
+        final out = ReviewRepository.blendMasteryQuizWeights(
+          rows,
+          dueOf: dueOf,
+          createdAtOf: createdAtOf,
+          random: Random(r),
+        );
+        for (var pos = 0; pos < out.length; pos++) {
+          sumPos[out[pos]['id'] as int] += pos;
+        }
+      }
+      final earlyMean =
+          (sumPos[0] + sumPos[1] + sumPos[2] + sumPos[3]) / (4 * rounds);
+      final lateMean =
+          (sumPos[4] + sumPos[5] + sumPos[6] + sumPos[7]) / (4 * rounds);
+      expect(earlyMean, lessThan(lateMean),
+          reason: '添加最早 + 复习最久远的前半组平均排名应显著优于后半组');
+    });
+
+    test('公平性：500 词足够轮次后每个词都被抽到（复合权重下不漏词）', () {
+      const n = 500;
+      final rnd = Random(20260930);
+      final items = [
+        for (var i = 0; i < n; i++)
+          row(i, rnd.nextInt(1000), rnd.nextInt(1000)),
+      ];
+      final picked = <int>{};
+      for (var round = 0; round < 300; round++) {
+        final ordered = ReviewRepository.blendMasteryQuizWeights(
+          items,
+          dueOf: dueOf,
+          createdAtOf: createdAtOf,
+          random: rnd,
+        );
+        final chosen = ordered.take(AppConstants.masteredQuizCount).toList();
+        final maxDue = items.map((e) => e['due'] as int).reduce(max);
+        for (final c in chosen) {
+          picked.add(c['id'] as int);
+          c['due'] = maxDue + 1;
+        }
+      }
+      expect(picked.length, n, reason: '复合权重下同样不允许漏词');
     });
   });
 
   group('抽检常量', () {
-    test('单次抽检 5 词、答对 15 天、时间权重 0.5 —— 与用户定值一致', () {
-      expect(AppConstants.masteredQuizCount, 5);
-      expect(AppConstants.masteredQuizCorrectDays, 15);
+    test('单次抽检 10 词、答对 10 天、时间权重 0.5 —— 与用户定值一致', () {
+      expect(AppConstants.masteredQuizCount, 10);
+      expect(AppConstants.masteredQuizCorrectDays, 10);
       expect(AppConstants.orderTimeWeight, 0.5);
     });
   });
 
   // v2.1.7 修复回归：「冷却期内的词不得被返回」。
-  // 原实现有一条 fallback——冷却期内候选不足 5 个时丢掉 due 条件硬凑数量，
-  // 导致"已掌握词刚好 5 个"的用户每一轮抽检都抽到同一批词。
+  // 原实现有一条 fallback——冷却期内候选不足单次抽检量时丢掉 due 条件硬凑数量，
+  // 导致"已掌握词刚好凑满一轮"的用户每一轮抽检都抽到同一批词。
   group('冷却期不变量（v2.1.7 修复回归）', () {
     final now = DateTime.utc(2026, 9, 17, 12);
     Map<String, dynamic> d(int id, Duration offset) => {
@@ -295,7 +418,7 @@ void main() {
         ReviewRepository.epochMillisOf(r['due']);
 
     test('冷却期内的词一律不放行：池子只有 5 个词时返回空，不再硬凑', () {
-      // 复现场景：5 个已掌握词刚被抽过一轮（due 推到 15 天后）
+      // 复现场景：几个已掌握词刚被抽过一轮（due 推到冷却期后，原值 15 天）
       final mastered = [
         for (var i = 0; i < 5; i++) d(i, const Duration(days: 15)),
       ];
@@ -347,13 +470,13 @@ void main() {
       );
     });
 
-    test('真机场景模拟：5 个已掌握词、答对冷却 15 天 → 15 天内只应抽到一次', () {
-      final items = [for (var i = 0; i < 5; i++) d(i, Duration.zero)];
+    test('真机场景模拟：10 个已掌握词、答对冷却 10 天 → 10 天内只应抽到一次', () {
+      final items = [for (var i = 0; i < 10; i++) d(i, Duration.zero)];
       final rnd = Random(20260917);
       var days = 0;
       var offered = 0;
 
-      for (var day = 0; day < 15; day++) {
+      for (var day = 0; day < 10; day++) {
         days++;
         final ready = ReviewRepository.filterQuizReady(
           items,
@@ -371,16 +494,16 @@ void main() {
           // 等价于 submitMasteredQuiz(correct: true)：due = 当前时刻 + 冷却期
           c['due'] = now
               .add(Duration(days: day))
-              .add(ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 5))
+              .add(ReviewRepository.cooldownAfterCorrect(masteredPoolSize: 10))
               .toIso8601String();
         }
       }
 
-      expect(days, 15);
+      expect(days, 10);
       expect(
         offered,
         1,
-        reason: '5 个词走完一轮后进入冷却期，修复前这里会是 15（每天重复同一批）',
+        reason: '10 个词走完一轮后进入冷却期，修复前这里会是 10（每天重复同一批）',
       );
     });
   });

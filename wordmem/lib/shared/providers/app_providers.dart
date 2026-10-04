@@ -25,6 +25,7 @@ import '../../data/repositories/story_repository.dart';
 import '../../data/repositories/sync_repository.dart';
 import '../../domain/services/fsrs_service.dart';
 import '../../domain/services/pronunciation_service.dart';
+import '../../domain/services/schedule_tuning.dart';
 import '../../domain/services/tts_cache_store.dart';
 import '../../domain/services/learning_context_builder.dart';
 import '../../domain/services/ai_story_service.dart';
@@ -45,15 +46,15 @@ import '../../infra/ai/openai_compatible_service.dart';
 /// LibraryPage 等页面通过 ref.listen 监听此值实现自动刷新。
 final wordListVersionProvider = StateProvider<int>((ref) => 0);
 
-/// 未来 3 小时内将到期的词数（首页提示，v2.1.6）。
-/// 依赖 wordListVersionProvider，词库发生变化时自动刷新。
+/// 即将到期窗口（默认 3 小时，可在「学习节奏」调整）内将到期的词数（首页提示，v2.1.6）。
+/// 依赖 wordListVersionProvider（词库变化）与 scheduleTuningProvider（窗口变化），
+/// 任一变化自动刷新。
 final upcomingDueCountProvider = FutureProvider<int>((ref) async {
   ref.watch(wordListVersionProvider);
+  final hours = ref.watch(scheduleTuningProvider).upcomingHours;
   try {
     final dao = ref.watch(wordDaoProvider);
-    return dao.countDueWithin(
-      const Duration(hours: AppConstants.upcomingDueWindowHours),
-    );
+    return dao.countDueWithin(Duration(hours: hours));
   } catch (_) {
     // 查询异常时退回 0，保证首页提示行仍能渲染（不会静默消失）
     return 0;
@@ -87,9 +88,10 @@ final databaseProvider = FutureProvider<AppDatabase>((ref) async {
   return db;
 });
 
-/// FSRS Service Provider
+/// FSRS Service Provider（时间线由「学习节奏」配置注入，v2.2.0 阶段 C；
+/// 配置变化时重建实例，全部 watch 它的仓库自动跟随）
 final fsrsServiceProvider = Provider<FsrsService>((ref) {
-  return FsrsService();
+  return FsrsService(ref.watch(scheduleTuningProvider).timeline);
 });
 
 // ============================================================
@@ -163,6 +165,7 @@ final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
     WordDao(db),
     ReviewDao(db),
     ref.watch(fsrsServiceProvider),
+    ref.watch(scheduleTuningProvider),
   );
 });
 
@@ -217,6 +220,40 @@ class DesiredRetentionNotifier extends StateNotifier<double> {
     _dao.setDesiredRetention(clamped);
     state = clamped;
   }
+}
+
+// ============================================================
+// 学习节奏配置 Provider（v2.2.0 阶段 C）
+// ============================================================
+
+/// 学习节奏（复习时间线 / 提前背窗口 / 抽检参数）。
+/// 构造时从 `app_settings` 读 `tune.*`：键缺失 / 版本不符 / 解析失败 /
+/// 越界 → 静默回落默认档，绝不因脏配置崩 App。
+final scheduleTuningProvider =
+    StateNotifierProvider<ScheduleTuningNotifier, ScheduleTuning>((ref) {
+  final dao = ref.watch(settingsDaoProvider);
+  return ScheduleTuningNotifier(dao);
+});
+
+class ScheduleTuningNotifier extends StateNotifier<ScheduleTuning> {
+  final SettingsDao _dao;
+
+  ScheduleTuningNotifier(this._dao)
+      : super(ScheduleTuning.tryParse(_dao.getTuning())?.clamped()
+              ?? ScheduleTuning.defaults());
+
+  /// 应用配置（先钳制再落库，UI 与持久化永远一致）
+  void apply(ScheduleTuning t) {
+    final c = t.clamped();
+    _dao.setTuning(c.toSettings());
+    state = c;
+  }
+
+  /// 应用预设档（standard | intensive | relaxed）
+  void applyPreset(String id) => apply(ScheduleTuning.preset(id));
+
+  /// 恢复默认档
+  void reset() => apply(ScheduleTuning.defaults());
 }
 
 // ============================================================

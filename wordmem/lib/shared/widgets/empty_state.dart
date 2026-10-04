@@ -91,7 +91,7 @@ class LoadingIndicator extends StatelessWidget {
   }
 }
 
-/// 熟练度档位颜色（按 T0–T7 节点映射的 4 档，1 档最浅 → 4 档最深）
+/// 熟练度档位颜色（按 T0–T8 节点映射的 4 档，1 档最浅 → 4 档最深）
 ///
 /// v2.1.8：取消「熟练跳过」后档位只由节点进度决定，`difficulty` 不再参与。
 Color masteryColor(

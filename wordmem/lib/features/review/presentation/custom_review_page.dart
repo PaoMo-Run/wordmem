@@ -218,9 +218,14 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
     _skipUnavailableEnToZh();
   }
 
-  /// 熟练词抽检（v2.1.6）：独立入口——从已掌握词中随机抽 5 个做默写。
-  /// 与自选复习的纯练习不同，抽检结果会回写卡片状态（答对 due+15 天、
-  /// 答错保留 mastered 并 due+3 天）。
+  /// 熟练词抽检（v2.1.6）：独立入口——从已掌握词中随机抽取做默写
+  /// （数量由学习节奏配置决定，默认 10 个）。
+  /// 与自选复习的纯练习不同，抽检结果会回写卡片状态（答对 due+10 天、
+  /// 答错保留 mastered 并 due+2 天）。
+  ///
+  /// v2.2.0 需求2 阶段①：与复习页编排对齐——答错的词**当场询问重测一次**，
+  /// 结算走同一套 [ReviewRepository.settleMasteredQuizRetries]：
+  /// 重测通过不洗白（推后 2 天复检窗口），仍错打回 T5 重新走周期。
   Future<void> _startMasteredQuiz() async {
     final repo = ref.read(reviewRepositoryProvider);
     final List<Map<String, dynamic>> words;
@@ -235,9 +240,53 @@ class _CustomReviewPageState extends ConsumerState<CustomReviewPage> {
       return;
     }
     if (!mounted) return;
-    await Navigator.of(context).push<List<int>>(
+    final wrongIds = await Navigator.of(context).push<List<int>>(
       MaterialPageRoute(builder: (_) => MasteredQuizPage(words: words)),
     );
+    if (!mounted || wrongIds == null || wrongIds.isEmpty) return;
+
+    final wrongRows = words
+        .where((w) => wrongIds.contains(w['id'] as int))
+        .toList();
+    final retry = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('当场重测错词？'),
+        content: Text(
+          '抽检答错 ${wrongRows.length} 个词。重测通过只推后复检窗口（不洗白）；'
+          '重测仍答错会退回复习队列（从 T5 重新走周期）。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('暂不重测'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('开始重测'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    if (retry != true) {
+      // 未重测：与复习页「未重测结算」同语义——推入 2 天复检窗口
+      repo.settleMasteredQuizRetries(wrongIds, failedIds: const <int>{});
+      return;
+    }
+    // 重测：逐题仍会 submitMasteredQuiz 落库；结算按返回的错词集合统一覆盖
+    //（重测答对 → hold 不洗白；仍错 → 打回 T5）。中途退出只带回已答错的子集，
+    // 未答到的词推入复检窗口，不误伤。
+    final stillWrong = await Navigator.of(context).push<List<int>>(
+      MaterialPageRoute(builder: (_) => MasteredQuizPage(words: wrongRows)),
+    );
+    if (!mounted) return;
+    repo.settleMasteredQuizRetries(
+      wrongIds,
+      failedIds: (stillWrong ?? const <int>[]).toSet(),
+    );
+    _toast('重测结算完成');
   }
 
   /// 预生成选项：选单词四选一（看中文选英文）+ 英译汉选择题（看英文选中文）

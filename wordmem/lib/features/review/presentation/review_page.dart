@@ -21,7 +21,8 @@ import 'widgets/quiz_cards.dart';
 /// 2. 选单词（看中文释义四选一）
 /// 3. 默写（看释义/首字母拼写）
 class ReviewPage extends ConsumerStatefulWidget {
-  /// v2.1.11：**提前背**模式 —— 只复习「未来 3 小时内到期」的词。
+  /// v2.1.11：**提前背**模式 —— 只复习「提前背窗口内到期」的词
+  /// （v2.2.0 起窗口小时数在「学习节奏」里可调）。
   /// 由首页「提前背」按钮经 `/review?mode=early` 进入。
   ///
   /// 与普通模式共用同一套三环节 / 分组 / 统计页 / 抽检流程，
@@ -131,7 +132,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     setState(() => _loading = true);
     try {
       final repo = ref.read(reviewRepositoryProvider);
-      // v2.1.11：提前背只取「未来 3 小时内到期」的词（按 due 由近到远）
+      // v2.1.11：提前背只取「提前背窗口内到期」的词（按 due 由近到远；
+      // 窗口小时数与首页计数同源，见 getUpcomingQueue）
       _allQueue = widget.early
           ? repo.getUpcomingQueue()
           : repo.getReviewQueue(limit: 500);
@@ -525,7 +527,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       if (!mounted) return;
       if (started) return; // 重测结束后由 _finishRetry() 落到统计页
     }
-    // 未重测：抽检错词仍要结算（保留 mastered + 推入 3 天复检窗口）
+    // 未重测：抽检错词仍要结算（保留 mastered + 推入 2 天复检窗口）
     _settleQuizWrongWithoutRetry();
 
     _showGroupStats(outcome);
@@ -616,7 +618,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     setState(() {
       _allQueue = rows;
       // 重测**不再按 50 词切分**：整批一次走完。
-      // （抽检错词最多 5 个，本组错词最多 50 个，若仍走 _startGroup(0)
+      // （抽检错词默认 10 个，本组错词最多 50 个，若仍走 _startGroup(0)
       //   切片，第 51 个之后的词会被静默丢掉。）
       _queue = rows;
       _index = 0;
@@ -657,7 +659,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       outcome.retryTotal = _queue.length;
       outcome.retryCorrect = _queue.length - _wrongIds.length;
     }
-    // 抽检错词的第二次失败 → 退回 T3；答对 → 不洗白 + 推入 3 天复检窗口。
+    // 抽检错词的第二次失败 → 打回 T5；答对 → 不洗白 + 推入 2 天复检窗口。
     // ⚠️ 必须在还原快照**之前**结算（它读的是重测这一轮的结果）。
     _applyQuizRetryOutcome();
     _retryOutcome = null;
@@ -690,7 +692,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     }
   }
 
-  /// 未重测时对抽检错词的结算：保留 mastered（不降级），只推入 3 天复检窗口，
+  /// 未重测时对抽检错词的结算：保留 mastered（不降级），只推入 2 天复检窗口，
   /// 并**清空错词池** —— 既是 v2.1.6「重做错题无限循环」防线的延续，
   /// 也保证上一组的抽检错词不会混进下一组的归属。
   void _settleQuizWrongWithoutRetry() {
@@ -745,7 +747,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('抽检已掌握的词？'),
         content: Text(
-          '从已走完全部复习周期（T0–T7）的词里随机抽了 ${words.length} 个做默写，'
+          '从已走完全部复习周期（T0–T8）的词里随机抽了 ${words.length} 个做默写，'
           '检测是否还记得。答错的词会进入本轮错词重测。',
         ),
         actions: [
@@ -779,10 +781,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     });
   }
 
-  /// 错词重测结束后的抽检词结算（v2.1.6）：
-  /// - 重测中仍有环节答错 → 第 2 次失败 → **立即**移出 mastered，退回 T3
-  /// - 重测全对 → **不洗白**：保留「一次答错」标记，只把复检窗口推到 3 天后；
-  ///   若 3 天后的复检再错，同样会退回 T3
+  /// 错词重测结束后的抽检词结算（v2.1.6；v2.2.0 阶段①共享化为
+  /// [ReviewRepository.settleMasteredQuizRetries]）：
+  /// - 重测中仍有环节答错 → 第 2 次失败 → **立即**移出 mastered，打回 T5
+  /// - 重测全对 → **不洗白**：保留「一次答错」标记，只把复检窗口推到 2 天后；
+  ///   若 2 天后的复检再错，同样会打回 T5
   ///
   /// ⚠️ v2.1.6 修复：结算完成后必须**清空** `_quizWrongWords`。
   /// 否则结果页会把这些抽检错词反复计入「重做错题」，用户点一次就再重测一轮，
@@ -790,21 +793,15 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   void _applyQuizRetryOutcome() {
     if (_quizWrongWords.isEmpty) return;
     final repo = ref.read(reviewRepositoryProvider);
-    for (final w in _quizWrongWords) {
-      final id = w['id'] as int;
-      final stillWrong = _enToZhResults[id] == false ||
-          _chooseResults[id] == false ||
-          _dictResults[id] == false;
-      try {
-        if (stillWrong) {
-          repo.demoteMasteredToT3(id);
-        } else {
-          repo.holdMasteredQuizWrongMark(id);
-        }
-      } catch (_) {
-        // 单条失败不影响其余
-      }
-    }
+    final ids = [for (final w in _quizWrongWords) w['id'] as int];
+    final failedIds = <int>{
+      for (final w in _quizWrongWords)
+        if (_enToZhResults[w['id'] as int] == false ||
+            _chooseResults[w['id'] as int] == false ||
+            _dictResults[w['id'] as int] == false)
+          w['id'] as int,
+    };
+    repo.settleMasteredQuizRetries(ids, failedIds: failedIds);
     // 结算完毕即清空——防止结果页再次把它们计入「重做错题」而陷入循环
     if (mounted) setState(() => _quizWrongWords.clear());
   }
@@ -1037,7 +1034,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   /// 三环节全部结束后，一次性提交本组（按 wordId，与出题顺序无关）。
   ///
   /// v2.1.8：提交的是**测验得分**（0–6）。排期与评分已解耦——
-  /// `FsrsService.review` 固定走满 T0–T7 八个节点，不再因评分跳档。
+  /// `FsrsService.review` 固定走满 T0–T8 九个节点，不再因评分跳档。
   void _commitAllReviews() {
     try {
       final repo = ref.read(reviewRepositoryProvider);
@@ -1132,6 +1129,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   Widget _buildEmpty() {
+    // v2.2.0 阶段 C：提前背窗口小时数可调，文案跟随
+    final hours = ref.read(scheduleTuningProvider).upcomingHours;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.early ? '提前背' : '今日复习'),
@@ -1144,7 +1143,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         icon: Icons.check_circle_outline,
         title: _reviewedCount > 0
             ? '复习完成！'
-            : (widget.early ? '未来 3 小时没有词到期' : '暂无待复习单词'),
+            : (widget.early ? '未来 $hours 小时没有词到期' : '暂无待复习单词'),
         subtitle: _reviewedCount > 0
             ? '本次复习了 $_reviewedCount 个单词'
             : (widget.early ? '这些词还没到复习时间，到点再来' : '稍后再来看看吧'),
@@ -1415,7 +1414,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   /// 完成：清临时存档并回首页。
   ///
-  /// 当前 50 词的 `due` 已在 `_commitAllReviews()` 沿 T0–T7 推进，
+  /// 当前 50 词的 `due` 已在 `_commitAllReviews()` 沿 T0–T8 推进，
   /// 队列与首页统计层面已自动不再命中 —— 无需额外的"标记完成"动作。
   void _finishSession() {
     _clearTempSave();

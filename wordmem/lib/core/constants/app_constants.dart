@@ -62,20 +62,35 @@ class AppConstants {
   // 拆成两个常量只会让以后调参时漏掉一处。
   static const double orderTimeWeight = 0.5;
 
-  // 熟练词抽检（v2.1.6：已掌握词的防遗忘抽检机制）
+  // 熟练词抽检（v2.1.6：已掌握词的防遗忘抽检机制；v2.2.0 参数调整）
   /// 单次抽检词量
-  static const int masteredQuizCount = 5;
+  static const int masteredQuizCount = 10;
   /// 答对后到下次抽检的间隔（天）
-  static const int masteredQuizCorrectDays = 15;
+  static const int masteredQuizCorrectDays = 10;
   /// 池子不足单次抽检量时，答对后的**缩短冷却期**（v2.1.7 用户定值）
   ///
-  /// 已掌握词 < 5 个时一轮抽检就会覆盖全池，再用 15 天会让抽检断档半个月；
+  /// 已掌握词 < 10 个时一轮抽检就会覆盖全池，再用 10 天会让抽检断档十天；
   /// 缩短到与「跳过」同档的 7 天。
   static const Duration masteredQuizShortCooldown = Duration(days: 7);
-  /// 答错（第 1 次）后的复检间隔
-  static const Duration masteredQuizWrongDelay = Duration(days: 3);
+  /// 答错后的复检间隔（不区分首次，一律 2 天；v2.2.0 由 3 天提前）
+  static const Duration masteredQuizWrongDelay = Duration(days: 2);
   /// 用户跳过后重新进入候选池的间隔（短于答对，保证跳过的词更快被补测）
   static const Duration masteredQuizSkipDelay = Duration(days: 7);
+
+  // 熟练词抽检的复合抽取权重（v2.2.0 需求2：添加最早 + 距上次复习最久优先）
+  //
+  // 得分 = wDue × due名次 + wCreated × created_at名次 + wRandom × 随机数
+  // （due 最早 = 距上次毕业/复习最久；created_at 最早 = 添加最早）
+  //
+  // ⚠️ 权重不对称的原因（Python 蒙特卡洛 500 词 × 300 轮实测）：
+  // due 会随抽中轮换（抽中即推后），是「自愈」维度，可承担主权重；
+  // created_at 是**永不轮换的固定维度**，权重大于 ~0.2 会让添加较晚的词
+  // 长期低于抽取线（0.3/0.3/0.4 时 300 轮仅覆盖 392/500，违反「不漏词」不变量），
+  // 0.15 时全量覆盖且偏向性依然显著（前半组平均名次 1.71 vs 后半组 5.29）。
+  // 随机项 0.4 保证抽检仍有惊喜感，不被头部词垄断。
+  static const double masteryQuizWeightDue = 0.45;
+  static const double masteryQuizWeightCreated = 0.15;
+  static const double masteryQuizWeightRandom = 0.40;
 
   /// 首页「即将到期」提示的时间窗口（小时）
   static const int upcomingDueWindowHours = 3;

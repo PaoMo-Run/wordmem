@@ -86,7 +86,7 @@ class _TodayContentState extends ConsumerState<_TodayContent>
     super.dispose();
   }
 
-  /// 回到前台时重算「未来 3 小时到期」。
+  /// 回到前台时重算「提前背窗口内到期」（v2.2.0 起窗口小时数可调）。
   ///
   /// 这个数字与**当前时刻**有关，会随时间自己变化；而 `upcomingDueCountProvider`
   /// 只在词库版本变化时重算 —— 不主动刷新就会一直停在打开 App 那一刻的值
@@ -96,7 +96,7 @@ class _TodayContentState extends ConsumerState<_TodayContent>
     if (state == AppLifecycleState.resumed) _refreshAll();
   }
 
-  /// 刷新首页全部数据：统计 + 「未来 3 小时到期」窗口
+  /// 刷新首页全部数据：统计 + 「提前背窗口到期」数字
   ///
   /// 统计是普通查询，重跑即可；窗口值来自 FutureProvider，**必须显式失效**，
   /// 否则下拉刷新只会更新上面的数字、下面那行时间敏感的数字不动。
@@ -113,7 +113,7 @@ class _TodayContentState extends ConsumerState<_TodayContent>
 
   // ───────────── 提前背（v2.1.11）─────────────
 
-  /// 「提前背」：把**未来 3 小时内到期**的词现在就先复习一轮。
+  /// 「提前背」：把**提前背窗口内到期**的词现在就先复习一轮。
   ///
   /// 场景：用户预知接下来几小时没法复习（开会 / 赶车 / 断网），
   /// 与其让这些词过期堆积，不如提前把复习阶段推进一格。
@@ -128,10 +128,12 @@ class _TodayContentState extends ConsumerState<_TodayContent>
   /// 所以不会再出现在今天的待复习里。
   Future<void> _confirmEarlyReview() async {
     final count = ref.read(upcomingDueCountProvider).valueOrNull ?? 0;
+    // v2.2.0 阶段 C：窗口小时数可调，文案跟随
+    final hours = ref.read(scheduleTuningProvider).upcomingHours;
     if (count <= 0) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('未来 3 小时没有词到期')));
+        ..showSnackBar(SnackBar(content: Text('未来 $hours 小时没有词到期')));
       return;
     }
 
@@ -139,8 +141,8 @@ class _TodayContentState extends ConsumerState<_TodayContent>
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('提前背这 $count 个词？'),
-        content: const Text(
-          '它们会在未来 3 小时内陆续到期。提前复习会立即开始一轮完整测验'
+        content: Text(
+          '它们会在未来 $hours 小时内陆续到期。提前复习会立即开始一轮完整测验'
           '（英译汉 → 选单词 → 默写，和平时一样），并正常推进各自所属的复习阶段。\n\n'
           '做完后这些词今天就不会再出现了。适合预知接下来没空复习的情况。',
         ),
@@ -159,7 +161,7 @@ class _TodayContentState extends ConsumerState<_TodayContent>
     if (!mounted || ok != true) return;
 
     await context.push('/review?mode=early');
-    // 回来后重算统计与"未来 3 小时"窗口（做完的词 due 已被推后）
+    // 回来后重算统计与"提前背"窗口（做完的词 due 已被推后）
     if (mounted) await _refreshAll();
   }
 
@@ -318,9 +320,10 @@ class _TodayContentState extends ConsumerState<_TodayContent>
     }
 
     final stats = _stats!;
-    // v2.1.6：未来 3 小时内将到期的词数（首页提示）。
+    // v2.1.6：提前背窗口内将到期的词数（首页提示；窗口小时数 v2.2.0 起可调）。
     // null = 尚未加载完成或查询异常 —— 此时整行不展示，避免显示误导性的 0。
     final upcoming = ref.watch(upcomingDueCountProvider).valueOrNull;
+    final upcomingHours = ref.watch(scheduleTuningProvider).upcomingHours;
 
     return RefreshIndicator(
       onRefresh: _refreshAll,
@@ -331,6 +334,7 @@ class _TodayContentState extends ConsumerState<_TodayContent>
             stats: stats,
             streak: _streak,
             upcoming: upcoming,
+            upcomingHours: upcomingHours,
             // v2.1.11：提前背（计数为 0 时按钮自身置灰）
             onEarlyReview: _confirmEarlyReview,
           ),
@@ -354,8 +358,10 @@ class _TodayContentState extends ConsumerState<_TodayContent>
 class _TodayHero extends StatelessWidget {
   final TodayStats stats;
   final int streak;
-  /// 未来 3 小时内将到期的词数（v2.1.6）；null = 尚未就绪，整行不展示
+  /// 提前背窗口内将到期的词数（v2.1.6）；null = 尚未就绪，整行不展示
   final int? upcoming;
+  /// 提前背窗口小时数（v2.2.0 阶段 C 起可调，文案跟随）
+  final int upcomingHours;
   /// v2.1.11：「提前背」的点击回调（null = 不展示按钮）
   final VoidCallback? onEarlyReview;
 
@@ -363,6 +369,7 @@ class _TodayHero extends StatelessWidget {
     required this.stats,
     required this.streak,
     this.upcoming,
+    this.upcomingHours = 3,
     this.onEarlyReview,
   });
 
@@ -456,7 +463,7 @@ class _TodayHero extends StatelessWidget {
                 ),
               ],
             ),
-            // v2.1.6：未来 3 小时到期提示（独立一行，始终可见——值为 0 也展示，
+            // v2.1.6：提前背窗口到期提示（独立一行，始终可见——值为 0 也展示，
             // 便于用户确认该功能生效；只有 provider 尚未就绪时才隐藏）
             if (upcoming != null) ...[
               const SizedBox(height: 14),
@@ -471,8 +478,8 @@ class _TodayHero extends StatelessWidget {
                   Expanded(
                     child: Text(
                       upcoming! > 0
-                          ? '未来 3 小时有 ${upcoming!} 个词将到期'
-                          : '未来 3 小时没有词到期',
+                          ? '未来 $upcomingHours 小时有 ${upcoming!} 个词将到期'
+                          : '未来 $upcomingHours 小时没有词到期',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: upcoming! > 0
                             ? cs.primary

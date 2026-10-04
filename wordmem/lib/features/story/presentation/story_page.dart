@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../domain/models/story.dart';
 import '../../../domain/models/story_quiz.dart';
+import '../../../data/repositories/story_repository.dart';
 import '../../../shared/providers/app_providers.dart';
 import '../../../shared/widgets/adaptive_content.dart';
 import '../../../infra/ai/ai_exception.dart';
@@ -13,12 +14,29 @@ import 'widgets/story_tappable_text.dart';
 
 /// 选词来源
 enum StoryWordSource {
+  /// 今日新词（仅当日新增，v2.2.0 默认来源）
+  todayNew,
   /// 今日所学（新增 ∪ 复习）
   today,
   /// 指定日期范围（新增的单词）
   dateRange,
   /// 指定单词（词库多选）
   specific,
+}
+
+/// 一篇短文及其生成/导入上下文（v2.2.0 需求4：支持多篇分段生成）
+class _StoryEntry {
+  /// 本篇使用的词（供「重新生成」）
+  final List<StoryWord> words;
+  Story story;
+  /// 导入校验命中的今日新词（仅导入的短文有值，用于正文高亮）
+  Set<String> contained;
+
+  _StoryEntry({
+    required this.words,
+    required this.story,
+    this.contained = const {},
+  });
 }
 
 /// 今日短文页：自选单词 → 生成（AI 优先，模板兜底）→ 展示/编辑/归档
@@ -30,13 +48,15 @@ class StoryPage extends ConsumerStatefulWidget {
 }
 
 class _StoryPageState extends ConsumerState<StoryPage> {
-  StoryWordSource _source = StoryWordSource.today;
+  StoryWordSource _source = StoryWordSource.todayNew;
+  /// 待选词队列（v2.2.0 需求4：每篇用前 25 词，生成/导入后移除已用词）
   List<String> _selectedWords = [];
   DateTimeRange? _dateRange;
   bool _loadingWords = false;
   bool _generating = false;
 
-  Story? _story;
+  /// 已生成的短文列表（v2.2.0 需求4：多次生成/导入累计展示）
+  final List<_StoryEntry> _entries = [];
   bool _generationFailed = false;
 
   /// 流式生成进度预览（v2.1.4：短文生成接线 SSE 流，逐字实时渲染）
@@ -53,10 +73,14 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     setState(() => _loadingWords = true);
     try {
       final repo = ref.read(storyRepositoryProvider);
-      final words = repo.getWordsStudiedToday();
+      // v2.2.0 需求4：todayNew = 仅当日新增；today = 新增 ∪ 复习。
+      // 全量保留，生成时按 25 词/篇自动分段。
+      final words = _source == StoryWordSource.todayNew
+          ? repo.getWordsAddedToday()
+          : repo.getWordsStudiedToday();
       if (mounted) {
         setState(() {
-          _selectedWords = words.take(25).toList();
+          _selectedWords = words.toList();
           _loadingWords = false;
         });
       }
@@ -76,7 +100,8 @@ class _StoryPageState extends ConsumerState<StoryPage> {
       final words = repo.getWordsAddedBetween(range.start, end);
       if (mounted) {
         setState(() {
-          _selectedWords = words.take(25).toList();
+          // 全量保留，生成时按 25 词/篇自动分段（v2.2.0 需求4）
+          _selectedWords = words.toList();
           _loadingWords = false;
         });
       }
@@ -116,40 +141,49 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     }
   }
 
+  /// 当前批次 = 待选队列的前 25 词
+  List<String> get _currentBatch =>
+      _selectedWords.take(StoryRepository.storyBatchSize).toList();
+
   Future<void> _generate() async {
     if (_selectedWords.isEmpty) return;
+    final batch = _currentBatch;
     setState(() {
       _generating = true;
       _generationFailed = false;
       _streamPreview = '';
     });
     try {
-      final story = await _generateViaStream();
-      if (mounted) {
-        setState(() {
-          _story = story;
-        });
-      }
+      final repo = ref.read(storyRepositoryProvider);
+      final enriched = repo.enrich(batch);
+      final story = await _generateBatchStory(enriched);
+      if (!mounted) return;
+      setState(() {
+        _entries.add(_StoryEntry(words: enriched, story: story));
+        // v2.2.0 需求4：本批词已用掉，从待选队列移除，自动露出下一批
+        _selectedWords.removeWhere(batch.contains);
+      });
     } on AiException catch (e) {
-      if (mounted) {
-        setState(() => _generationFailed = true);
-        _showClipboardGuide(e.message);
-      }
+      _onGenerationFailed(e.message, batch);
     } catch (e) {
-      if (mounted) {
-        setState(() => _generationFailed = true);
-        _showClipboardGuide('$e');
-      }
+      _onGenerationFailed('$e', batch);
     } finally {
       if (mounted) setState(() => _generating = false);
     }
   }
 
-  /// 流式生成短文（v2.1.4）：消费 SSE 流实时渲染预览，结束后解析为 Story。
-  /// 此前走阻塞 chat，推理模型首字延迟 10s+ 且高峰期易超时无响应。
-  Future<Story> _generateViaStream() async {
+  /// 生成失败处理：保留待选词，引导剪贴板中转/重试
+  void _onGenerationFailed(String message, List<String> batch) {
+    if (!mounted) return;
+    setState(() => _generationFailed = true);
+    _showClipboardGuide(message, batchWords: batch);
+  }
+
+  /// 流式生成一篇短文（v2.1.4）：消费 SSE 流实时渲染预览，结束后解析为 Story。
+  /// v2.2.0 需求4：入参改为单批词（≤25），由 [_generate] 按批次调用。
+  Future<Story> _generateBatchStory(List<StoryWord> batch) async {
     final repo = ref.read(storyRepositoryProvider);
-    final limited = repo.limitWords(repo.enrich(_selectedWords));
+    final limited = repo.limitWords(batch);
     var raw = '';
     await for (final snapshot in repo.generateStream(limited)) {
       raw = snapshot;
@@ -167,20 +201,21 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     return repo.parseAiStory(raw, limited);
   }
 
-  /// 重新生成：对已生成的短文不满意时，换一批内容重新生成
-  Future<void> _regenerate() async {
-    if (_selectedWords.isEmpty || _generating) return;
+  /// 重新生成：对该篇短文不满意时，用同一批词换内容重新生成
+  Future<void> _regenerateEntry(_StoryEntry entry) async {
+    if (_generating || entry.words.isEmpty) return;
     setState(() {
       _generating = true;
       _streamPreview = '';
     });
     try {
-      final newStory = await _generateViaStream();
+      final newStory = await _generateBatchStory(entry.words);
       if (mounted) {
         setState(() {
           // 保留原 story 的 id 与归档状态，便于直接覆盖记忆库
-          _story = _story?.id != null
-              ? newStory.copyWith(id: _story!.id, archived: _story!.archived)
+          entry.story = entry.story.id != null
+              ? newStory.copyWith(
+                  id: entry.story.id, archived: entry.story.archived)
               : newStory;
         });
       }
@@ -198,9 +233,12 @@ class _StoryPageState extends ConsumerState<StoryPage> {
   }
 
   /// AI 不可用时引导剪贴板中转：复制提示词 → 其它 AI App 生成 → 粘贴导入
-  Future<void> _showClipboardGuide(String reason) async {
+  /// v2.2.0 需求4：提示词只装本批 ≤25 词（[batchWords] 为失败批次），不再整队列塞入
+  Future<void> _showClipboardGuide(String reason,
+      {List<String>? batchWords}) async {
     final repo = ref.read(storyRepositoryProvider);
-    final enriched = repo.enrich(_selectedWords);
+    final batch = batchWords ?? _currentBatch;
+    final enriched = repo.enrich(batch);
     final prompt = repo.buildClipboardPrompt(enriched);
 
     if (!mounted) return;
@@ -213,7 +251,7 @@ class _StoryPageState extends ConsumerState<StoryPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('原因：$reason\n\n可以复制下方提示词，到您已安装的 AI App（豆包、DeepSeek 等）中生成，再把结果粘贴回本页导入：'),
+              Text('原因：$reason\n\n可以复制下方提示词（本批 ${batch.length} 词），到您已安装的 AI App（豆包、DeepSeek 等）中生成，再把结果粘贴回本页导入；导入后已用词会自动从待选中移除。'),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
@@ -257,6 +295,7 @@ class _StoryPageState extends ConsumerState<StoryPage> {
   }
 
   /// 查看离线提示词：把发给 AI 的提示词展示出来，可复制到其它 AI App 使用
+  /// v2.2.0 需求4：只装本批前 25 词，导入后已用词自动移除，再查看即下一批
   Future<void> _showOfflinePrompt() async {
     if (_selectedWords.isEmpty) {
       if (mounted) {
@@ -267,10 +306,15 @@ class _StoryPageState extends ConsumerState<StoryPage> {
       return;
     }
     final repo = ref.read(storyRepositoryProvider);
-    final enriched = repo.enrich(_selectedWords);
+    final batch = _currentBatch;
+    final enriched = repo.enrich(batch);
     final prompt = repo.buildClipboardPrompt(enriched);
 
     if (!mounted) return;
+    final total = _selectedWords.length;
+    final note = total > batch.length
+        ? '\n\n待选共 $total 词，本提示词仅包含前 ${batch.length} 词；导入本批生成结果后，已用词自动移除，再次查看即可拿到下一批提示词。'
+        : '';
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -281,6 +325,7 @@ class _StoryPageState extends ConsumerState<StoryPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('这是发给 AI 生成短文的完整提示词。可复制到任何 AI App（豆包、DeepSeek 等）生成，再把结果「粘贴导入」回本页：'),
+              Text(note),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
@@ -335,13 +380,24 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     try {
       final repo = ref.read(storyRepositoryProvider);
       final story = repo.parseImported(text);
+
+      // v2.2.0 需求4：在「待选词」中检测导入短文已包含的词，并自动移除已用词
+      final matched = repo.matchedWords(
+          _selectedWords, '${story.title}\n${story.content}');
+
       if (mounted) {
         setState(() {
-          _story = story;
+          _entries.add(_StoryEntry(
+            words: repo.enrich(story.words),
+            story: story,
+            contained: matched,
+          ));
+          _selectedWords.removeWhere(matched.contains);
           _generationFailed = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已从剪贴板导入短文，可编辑后存入记忆库')),
+          SnackBar(content: Text(
+              '已导入短文；命中待选词 ${matched.length} 个并已移除，剩余 ${_selectedWords.length} 词待生成')),
         );
       }
     } catch (e) {
@@ -378,7 +434,8 @@ class _StoryPageState extends ConsumerState<StoryPage> {
     }
   }
 
-  Future<void> _editStory(Story story) async {
+  Future<void> _editStory(_StoryEntry entry) async {
+    final story = entry.story;
     final contentCtrl = TextEditingController(text: story.content);
     final transCtrl = TextEditingController(text: story.translation);
     final titleCtrl = TextEditingController(text: story.title);
@@ -436,14 +493,12 @@ class _StoryPageState extends ConsumerState<StoryPage> {
       translation: transCtrl.text.trim(),
       updatedAt: DateTime.now(),
     );
-    setState(() => _story = updated);
+    setState(() => entry.story = updated);
     await _saveToLibrary(updated);
   }
 
   /// 从短文卡片进入记忆测试（仅已保存的短文）
-  Future<void> _startQuiz() async {
-    final story = _story;
-    if (story == null || story.id == null) return;
+  Future<void> _startQuiz(Story story) async {
     final mode = await showModalBottomSheet<StoryQuizMode>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -564,7 +619,11 @@ class _StoryPageState extends ConsumerState<StoryPage> {
                       ),
                     ),
                   ),
-                if (_story != null) _buildStoryCard(theme, _story!),
+                // 已生成的短文（v2.2.0 需求4：生成/导入累计展示）
+                ..._entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildStoryCard(theme, e),
+                    )),
               ],
             ),
           ),
@@ -581,6 +640,11 @@ class _StoryPageState extends ConsumerState<StoryPage> {
         const SizedBox(height: 8),
         SegmentedButton<StoryWordSource>(
           segments: const [
+            ButtonSegment(
+              value: StoryWordSource.todayNew,
+              label: Text('今日新词'),
+              icon: Icon(Icons.fiber_new_outlined),
+            ),
             ButtonSegment(
               value: StoryWordSource.today,
               label: Text('今日所学'),
@@ -600,7 +664,10 @@ class _StoryPageState extends ConsumerState<StoryPage> {
           selected: {_source},
           onSelectionChanged: (s) {
             setState(() => _source = s.first);
-            if (_source == StoryWordSource.today) _loadTodayWords();
+            if (_source == StoryWordSource.todayNew ||
+                _source == StoryWordSource.today) {
+              _loadTodayWords();
+            }
           },
         ),
         if (_source == StoryWordSource.dateRange) ...[
@@ -653,30 +720,57 @@ class _StoryPageState extends ConsumerState<StoryPage> {
               color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           )
-        else
+        else ...[
+          // v2.2.0 需求4：只展示本批前 25 词，其余折叠为计数
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _selectedWords
-                .map((w) => Chip(
-                      label: Text(w),
-                      onDeleted: () => setState(
-                          () => _selectedWords.remove(w)),
-                    ))
-                .toList(),
+            children: [
+              ..._selectedWords
+                  .take(StoryRepository.storyBatchSize)
+                  .map((w) => Chip(
+                        label: Text(w),
+                        onDeleted: () => setState(
+                            () => _selectedWords.remove(w)),
+                      )),
+              if (_selectedWords.length > StoryRepository.storyBatchSize)
+                Chip(
+                  label: Text(
+                      '+${_selectedWords.length - StoryRepository.storyBatchSize} 词待下一批'),
+                ),
+            ],
           ),
+        ],
         const SizedBox(height: 4),
-        Text(
-          '最多取前 25 个单词生成；点「生成」使用所选单词写一篇事实合理的短文。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-          ),
-        ),
+        Builder(builder: (context) {
+          // v2.2.0 需求4：待选队列提示——生成/导入一篇后自动移除已用词
+          final count = _selectedWords.length;
+          if (count == 0) {
+            return Text(
+              '选择单词后点「生成」写一篇事实合理的短文；生成/导入后已用词会自动移出待选。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+            );
+          }
+          final batch = count > StoryRepository.storyBatchSize
+              ? StoryRepository.storyBatchSize
+              : count;
+          return Text(
+            '待选 $count 词；本篇使用前 $batch 词，生成/导入后自动移除已用词并展示下一批。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          );
+        }),
       ],
     );
   }
 
   Widget _buildGenerateButton() {
+    final batchCount = _selectedWords.length > StoryRepository.storyBatchSize
+        ? StoryRepository.storyBatchSize
+        : _selectedWords.length;
     return SizedBox(
       width: double.infinity,
       child: FilledButton.icon(
@@ -687,12 +781,15 @@ class _StoryPageState extends ConsumerState<StoryPage> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.auto_awesome),
-        label: Text(_generating ? '生成中...' : '生成短文'),
+        label: Text(_generating
+            ? '生成中...'
+            : '生成短文（本批 $batchCount 词）'),
       ),
     );
   }
 
-  Widget _buildStoryCard(ThemeData theme, Story story) {
+  Widget _buildStoryCard(ThemeData theme, _StoryEntry entry) {
+    final story = entry.story;
     final sourceLabel = switch (story.source) {
       StorySource.ai => 'AI 生成',
       StorySource.manual => '手动导入',
@@ -753,7 +850,8 @@ class _StoryPageState extends ConsumerState<StoryPage> {
             const SizedBox(height: 8),
             StoryTappableText(
               text: story.content,
-              highlightWords: story.words.toSet(),
+              // v2.2.0 需求4：导入短文高亮 = 重点词 ∪ 校验命中的今日新词
+              highlightWords: story.words.toSet()..addAll(entry.contained),
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
             ),
             if (story.translation.isNotEmpty) ...[
@@ -786,17 +884,17 @@ class _StoryPageState extends ConsumerState<StoryPage> {
               children: [
                 if (story.id != null)
                   TextButton.icon(
-                    onPressed: _generating ? null : _startQuiz,
+                    onPressed: _generating ? null : () => _startQuiz(story),
                     icon: const Icon(Icons.quiz_outlined, size: 18),
                     label: const Text('测试'),
                   ),
                 TextButton.icon(
-                  onPressed: _generating ? null : _regenerate,
+                  onPressed: _generating ? null : () => _regenerateEntry(entry),
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('重新生成'),
                 ),
                 TextButton.icon(
-                  onPressed: () => _editStory(story),
+                  onPressed: () => _editStory(entry),
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: const Text('编辑'),
                 ),

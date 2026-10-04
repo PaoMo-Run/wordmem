@@ -693,8 +693,11 @@ class WordRepository {
   /// - 正确项 = 组内词（去重，最多 5 个，保证至少 3 个干扰项）
   /// - 干扰项 = 词库内随机取，目标凑满 8 个；词库不足则降配
   /// - requiredCorrect = 正确项 < 3 时须全对，否则答对 3 个即通过
+  /// - [exclude]：额外排除的干扰项候选（v2.2.0 需求3：拆子题时排除全群其他成员，
+  ///   避免同群词在另一子题中充当干扰项——它们本身就是正确答案）
   /// 返回 null 表示该群无法出题（组内词为空）。
-  Map<String, dynamic>? buildGroupChallenge(List<String> groupWords) {
+  Map<String, dynamic>? buildGroupChallenge(List<String> groupWords,
+      {Set<String> exclude = const {}}) {
     final correct = <String>[];
     for (final w in groupWords) {
       if (correct.length >= 5) break;
@@ -704,13 +707,13 @@ class WordRepository {
     if (correct.isEmpty) return null;
 
     final allWords = _wordDao.getAll(limit: 100000).toList()..shuffle();
-    final exclude = correct.toSet();
+    final excludeAll = <String>{...exclude, ...correct};
     final distractors = <String>[];
     final target = 8 - correct.length;
     for (final w in allWords) {
       if (distractors.length >= target) break;
       final ww = w['word'] as String;
-      if (exclude.contains(ww)) continue;
+      if (excludeAll.contains(ww)) continue;
       distractors.add(ww);
     }
 
@@ -720,5 +723,44 @@ class WordRepository {
       'options': options,
       'requiredCorrect': correct.length < 3 ? correct.length : 3,
     };
+  }
+
+  /// v2.2.0 需求3：把词群成员洗牌后切成 ≤[chunkSize] 的子题块，
+  /// 保证 >5 词的群在题组内通过多道子题覆盖全部成员（块间不重复）。
+  /// 纯函数（可注入 Random），供出题与测试共用。
+  static List<List<String>> splitGroupIntoChunks(List<String> groupWords,
+      {int chunkSize = 5, math.Random? random}) {
+    final pool = groupWords
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty)
+        .toSet()
+        .toList()
+      ..shuffle(random);
+    final chunks = <List<String>>[];
+    for (var i = 0; i < pool.length; i += chunkSize) {
+      final end =
+          i + chunkSize > pool.length ? pool.length : i + chunkSize;
+      chunks.add(pool.sublist(i, end));
+    }
+    return chunks;
+  }
+
+  /// v2.2.0 需求3：为一个词群生成完整题组（单卡题组制）——
+  /// 成员洗牌切块后每块一道子题，覆盖全群；干扰项排除全群成员。
+  /// 返回空列表表示该群无法出题。
+  List<Map<String, dynamic>> buildGroupChallengeSession(
+      List<String> groupWords,
+      {math.Random? random}) {
+    final all = groupWords
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty)
+        .toSet();
+    final session = <Map<String, dynamic>>[];
+    for (final chunk in splitGroupIntoChunks(groupWords, random: random)) {
+      final challenge =
+          buildGroupChallenge(chunk, exclude: all.difference(chunk.toSet()));
+      if (challenge != null) session.add(challenge);
+    }
+    return session;
   }
 }

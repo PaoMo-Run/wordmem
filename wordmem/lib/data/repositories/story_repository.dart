@@ -32,12 +32,78 @@ class StoryRepository {
   /// 今日学习过的单词（新增 ∪ 复习，去重）
   List<String> getWordsStudiedToday() => _wordDao.getWordsStudiedToday();
 
+  /// v2.2.0 需求4：当日新添加的单词（仅 created_at 今日零点起，不含纯复习词）。
+  /// 按添加时间升序返回（最早添加的排前），供分段生成时批次稳定。
+  List<String> getWordsAddedToday() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final rows = _wordDao.getWordsAddedBetween(start, now);
+    return rows.map((r) => r['word'] as String).toList().reversed.toList();
+  }
+
   /// 指定日期范围内新增的单词
   List<String> getWordsAddedBetween(DateTime start, DateTime end) =>
       _wordDao.getWordsAddedBetween(start, end).map((r) => r['word'] as String).toList();
 
   /// 词库全部单词（供"指定单词"多选）
   List<String> getAllWords() => _wordDao.getAllWordTexts();
+
+  // ============ v2.2.0 需求4：分段生成 + 导入校验 ============
+
+  /// 每篇短文的最大词数（与 AiStoryService._maxWords 一致）
+  static const int storyBatchSize = 25;
+
+  /// 把单词按每批 ≤[batchSize] 切成生成批次（保持给定顺序，纯函数可测）
+  static List<List<String>> splitIntoBatches(List<String> words,
+      {int batchSize = storyBatchSize}) {
+    final batches = <List<String>>[];
+    for (var i = 0; i < words.length; i += batchSize) {
+      final end = i + batchSize > words.length ? words.length : i + batchSize;
+      batches.add(words.sublist(i, end));
+    }
+    return batches;
+  }
+
+  /// 目标词的变形集合（含原词小写）：通过词典 exchange 字段展开
+  /// （复数/过去式/现在分词/第三人称/比较级等），供导入正文匹配。
+  Set<String> wordVariants(String word) {
+    final variants = <String>{word.trim().toLowerCase()};
+    final dict = _dict.lookupWithExchange(word.trim());
+    final exchange = dict?.exchange;
+    if (exchange != null && exchange.isNotEmpty) {
+      // exchange 格式: "p:ran/d:run/i:running/3:runs"
+      for (final part in exchange.split('/')) {
+        final seg = part.split(':');
+        if (seg.length == 2 && seg[1].trim().isNotEmpty) {
+          variants.add(seg[1].trim().toLowerCase());
+        }
+      }
+    }
+    final surface = dict?.word.trim().toLowerCase() ?? '';
+    if (surface.isNotEmpty) variants.add(surface);
+    return variants;
+  }
+
+  /// 正文 token 归一化集合：小写 + 去所有格（dog's / dogs' → dog / dogs）
+  static Set<String> tokenizeText(String text) {
+    return RegExp(r"[A-Za-z][A-Za-z'-]*")
+        .allMatches(text)
+        .map((m) => m.group(0)!.toLowerCase())
+        .map((t) => t.replaceAll(RegExp(r"'+s?$"), ''))
+        .where((t) => t.isNotEmpty)
+        .toSet();
+  }
+
+  /// v2.2.0 需求4：校验导入短文已包含哪些目标词。
+  /// 两档匹配：①精确（小写 + 所有格归一）②词典变形展开（复数/时态等）。
+  Set<String> matchedWords(List<String> targets, String storyText) {
+    final tokens = tokenizeText(storyText);
+    final matched = <String>{};
+    for (final t in targets) {
+      if (wordVariants(t).any(tokens.contains)) matched.add(t);
+    }
+    return matched;
+  }
 
   /// 富化：为单词列表补充词性与中文释义（词典优先，兜底原文）
   List<StoryWord> enrich(List<String> words) {

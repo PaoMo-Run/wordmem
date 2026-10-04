@@ -242,6 +242,24 @@ class _MePageState extends ConsumerState<MePage> {
             ],
           ),
 
+          // 学习节奏（v2.2.0 阶段 C）
+          const _SectionHeader('学习节奏'),
+          GlassSection(
+            children: [
+              Consumer(builder: (context, ref, _) {
+                final t = ref.watch(scheduleTuningProvider);
+                return ListTile(
+                  leading: const Icon(Icons.tune_outlined),
+                  title: const Text('学习节奏'),
+                  subtitle:
+                      Text('${t.presetDisplayName} · 答对 ${t.quizCorrectDays} 天后再抽检'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/schedule-tuning'),
+                );
+              }),
+            ],
+          ),
+
           // 数据
           const _SectionHeader('数据'),
           GlassSection(

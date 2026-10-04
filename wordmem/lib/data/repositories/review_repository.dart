@@ -6,6 +6,7 @@ import '../database/review_dao.dart';
 import '../../core/constants/app_constants.dart';
 import '../../domain/models/review_rating.dart';
 import '../../domain/services/fsrs_service.dart';
+import '../../domain/services/schedule_tuning.dart';
 
 /// 复习仓库 - FSRS 排程 + 事务写入
 class ReviewRepository {
@@ -13,8 +14,14 @@ class ReviewRepository {
   final WordDao _wordDao;
   final ReviewDao _reviewDao;
   final FsrsService _fsrs;
+  final ScheduleTuning _tuning;
 
-  ReviewRepository(this._db, this._wordDao, this._reviewDao, this._fsrs);
+  /// [tuning] 可选（不传 = 默认档/编译期常量）：生产侧由
+  /// `app_providers.dart` 传入 `scheduleTuningProvider` 的当前值；
+  /// 测试里全部走静态方法或省略该参数，行为与旧版完全一致。
+  ReviewRepository(this._db, this._wordDao, this._reviewDao, this._fsrs,
+      [ScheduleTuning? tuning])
+      : _tuning = tuning ?? ScheduleTuning.defaults();
 
   /// 获取待复习列表（新词 + 到期词）。
   ///
@@ -77,18 +84,24 @@ class ReviewRepository {
   /// - **不含已到期词**（那些属于正常复习队列，用户可以直接做）；
   /// - **不做时间权重打乱**：提前背的价值就在于"按到期先后一口气推完"，
   ///   谁最快要到期本身就是要传达的信息，打乱反而无从判断；
-  /// - 窗口与首页提示共用 [AppConstants.upcomingDueWindowHours]，
+  /// - 窗口与首页提示共用「提前背窗口」（`ScheduleTuning.upcomingHours`，
+  ///   可在学习节奏里调整；未配置时 = 默认 3 小时），
   ///   且 DAO 侧 WHERE 条件与计数查询严格一致（不会"数字对不上"）。
+  ///
+  /// ⚠️ Dart 语法约束：默认值必须是编译期常量，读配置只能用
+  /// 「可空参数 + 体内兜底」，不能写成 `Duration window = <运行时值>`。
   List<Map<String, dynamic>> getUpcomingQueue({
-    Duration window =
-        const Duration(hours: AppConstants.upcomingDueWindowHours),
+    Duration? window,
     int limit = 100,
-  }) =>
-      _wordDao.getDueWithin(window, limit: limit);
+  }) {
+    final w =
+        window ?? Duration(hours: _tuning.upcomingHours);
+    return _wordDao.getDueWithin(w, limit: limit);
+  }
 
   /// 提交一轮测验（事务操作）。
   ///
-  /// v2.1.8：排期已与评分**解耦**（固定走满 T0–T7 八个节点，取消跳过），
+  /// v2.1.8：排期已与评分**解耦**（固定走满 T0–T8 九个节点，取消跳过），
   /// 因此入参改为**测验得分**：
   /// - [score]：0–6 分（三环节 × 2 分的扣分制，见 `AppConstants.quizMaxScore`）
   /// - [timeouts]：本轮超时的环节数 0–3
@@ -247,24 +260,76 @@ class ReviewRepository {
     return [for (final e in scored) e.$1];
   }
 
-  /// 抽检答错（第 1 次）后的复检时间
-  static DateTime dueAfterWrong(DateTime now) =>
-      now.add(AppConstants.masteredQuizWrongDelay);
+  /// 抽检答错后的复检时间（不区分首次，一律 2 天；可注入配置）
+  static DateTime dueAfterWrong(DateTime now, {ScheduleTuning? t}) =>
+      now.add(Duration(days: (t ?? ScheduleTuning.defaults()).quizWrongDays));
 
   /// 用户跳过后重新进入候选池的时间
-  static DateTime dueAfterSkip(DateTime now) =>
-      now.add(AppConstants.masteredQuizSkipDelay);
+  static DateTime dueAfterSkip(DateTime now, {ScheduleTuning? t}) =>
+      now.add(Duration(days: (t ?? ScheduleTuning.defaults()).quizSkipDays));
 
   /// 抽检答错的处置判定（纯函数，便于单测）：
-  /// - 此前未错过（0）→ 只标记一次，进入 3 天复检窗口
-  /// - 此前已错过一次（≥1）→ 判定确实遗忘，降级退回 T3
+  /// - 此前未错过（0）→ 只标记一次，进入 2 天复检窗口
+  /// - 此前已错过一次（≥1）→ 判定确实遗忘，打回复习列表并从 T5 重新走周期
   static bool shouldDemoteOnQuizWrong(double prevFailCount) =>
       prevFailCount >= 1;
 
+  /// **熟练词抽检的复合抽取权重排序**（纯函数，便于单测；v2.2.0 需求2）。
+  ///
+  /// 需求：随机抽取引入权重——**添加时间最早、距最近一次复习最久远**的词优先。
+  /// 两者是两个独立的时间维度，单维度的 [blendByTimeWeight] 表达不了，
+  /// 故为抽检池新增三项线性复合（复习队列继续用单维度 due 混合，互不影响）：
+  ///
+  ///   score = wDue × rank(due) + wCreated × rank(created_at) + wRandom × 随机数
+  ///
+  /// - `rank`：该维度升序名次归一化到 `[0,1]`，`0` = 最优先
+  ///   （due 最早 = 距上次毕业最久；created_at 最早 = 添加最早）
+  /// - ⚠️ 权重取 0.45/0.15/0.40 而非对半：due 随抽中轮换（自愈维度）可担主权重；
+  ///   created_at 是永不轮换的固定维度，权重过大（实测 ≥0.2）会让添加较晚的词
+  ///   长期低于抽取线、违反「不漏词」不变量（蒙特卡洛验证见常量注释）
+  /// - 同分并列共享同一名次；脏时间（[double.maxFinite] 哨兵）该维度一律垫尾
+  ///   （rank=1），与 [blendByTimeWeight] 的约定一致
+  /// - 不漏词、不重复、不改元素个数；单元素原样返回
+  static List<Map<String, dynamic>> blendMasteryQuizWeights(
+    List<Map<String, dynamic>> rows, {
+    required double Function(Map<String, dynamic>) dueOf,
+    required double Function(Map<String, dynamic>) createdAtOf,
+    double weightDue = AppConstants.masteryQuizWeightDue,
+    double weightCreated = AppConstants.masteryQuizWeightCreated,
+    double weightRandom = AppConstants.masteryQuizWeightRandom,
+    Random? random,
+  }) {
+    if (rows.length <= 1) return [...rows];
+
+    double rankOf(List<double> sortedValues, double v) {
+      if (v >= double.maxFinite) return 1.0; // 脏数据垫尾
+      var i = 0;
+      while (i < sortedValues.length && sortedValues[i] < v) {
+        i++;
+      }
+      final n = sortedValues.length;
+      return n <= 1 ? 0.0 : i / (n - 1);
+    }
+
+    final dueValues = rows.map(dueOf).toList()..sort();
+    final createdValues = rows.map(createdAtOf).toList()..sort();
+    final rnd = random ?? Random();
+    final scored = <(Map<String, dynamic>, double)>[
+      for (final r in rows)
+        (
+          r,
+          weightDue * rankOf(dueValues, dueOf(r)) +
+              weightCreated * rankOf(createdValues, createdAtOf(r)) +
+              weightRandom * rnd.nextDouble(),
+        ),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+    return [for (final e in scored) e.$1];
+  }
+
   /// 该候选词是否已过冷却期（纯函数，便于单测）。
   ///
-  /// **这是抽检公平性的唯一基石**：被抽中的词会把 due 推后（答对 15 天 /
-  /// 答错 3 天 / 跳过 7 天）。一旦放行冷却期内的词，池子小的用户就会每一轮
+  /// **这是抽检公平性的唯一基石**：被抽中的词会把 due 推后（答对 10 天 /
+  /// 答错 2 天 / 跳过 7 天）。一旦放行冷却期内的词，池子小的用户就会每一轮
   /// 都抽到同一批——v2.1.7 修的就是这条不变量被 fallback 打破。
   static bool isQuizReady(Map<String, dynamic> word, {required DateTime now}) {
     final due = DateTime.tryParse((word['due'] as String?) ?? '');
@@ -281,43 +346,48 @@ class ReviewRepository {
 
   /// 抽取待抽检的已掌握词。
   ///
-  /// v2.1.7 起改用**时间权重 0.5 的混合打分**（时间 = due 最早优先），
-  /// 取代 v2.1.6 的「硬窗口（5×3）+ 窗口内纯随机」：
-  /// - 硬窗口让窗口外的词永远排不上队，池子一大就等于把时间权重钉在 1.0
-  /// - 软权重下时间最早的一批**更容易**被抽到，靠后的词也仍有机会
-  ///
+  /// v2.2.0 需求2 起改用**复合抽取权重**（0.45×due 名次 + 0.15×created_at 名次
+  /// + 0.40×随机）：添加最早、距最近一次复习最久远的词优先被抽中，同时保留
+  /// 足够的随机性避免头部词垄断。v2.1.7 的冷却期不变量原样保留：
   /// 候选**只含冷却期已过**的词（DAO 的 SQL 已保证），这里再用
   /// [filterQuizReady] 兜一层——任何未来改动放宽 SQL 条件都不会让同一批词
   /// 反复出现。冷却期内无词可用时返回空，本次不抽检（调用方已有空值兜底）。
-  List<Map<String, dynamic>> pickMasteredQuizWords({
-    int count = AppConstants.masteredQuizCount,
-  }) {
+  List<Map<String, dynamic>> pickMasteredQuizWords({int? count}) {
+    // 单次抽检量：显式传参优先；否则读当前配置档（未配置 = 默认档）
+    final c = count ?? _tuning.quizCount;
     final candidates = filterQuizReady(
       _wordDao.pickMasteredQuizCandidates(),
       now: DateTime.now(),
     );
-    if (candidates.isEmpty || count <= 0) return const [];
-    final ranked = blendByTimeWeight(
+    if (candidates.isEmpty || c <= 0) return const [];
+    final ranked = blendMasteryQuizWeights(
       candidates,
-      timeOf: (r) => epochMillisOf(r['due']),
+      dueOf: (r) => epochMillisOf(r['due']),
+      createdAtOf: (r) => epochMillisOf(r['created_at']),
     );
-    return ranked.take(count).toList();
+    return ranked.take(c).toList();
   }
 
   /// 抽检答对后的冷却间隔（纯函数，便于单测）。
   ///
-  /// 池子 ≥ 单次抽检量时用 15 天；**池子不足时缩短到 7 天**（v2.1.7 用户定值）——
-  /// 已掌握词 < 5 个时一轮抽检就覆盖全池，再用 15 天会让抽检断档半个月。
-  static Duration cooldownAfterCorrect({required int masteredPoolSize}) =>
-      masteredPoolSize >= AppConstants.masteredQuizCount
-          ? const Duration(days: AppConstants.masteredQuizCorrectDays)
-          : AppConstants.masteredQuizShortCooldown;
+  /// 池子 ≥ 单次抽检量时用全额冷却（默认 10 天）；**池子不足时缩短到 7 天**
+  /// （v2.1.7 用户定值）——已掌握词不足一轮抽检量时一轮抽检就覆盖全池，
+  /// 再用全额冷却会让抽检断档。阈值与冷却值都跟随配置档（与
+  /// [ScheduleTuning] 的 quizCount/quizCorrectDays/quizShortCooldownDays 一致），
+  /// 不传 [t] = 默认档（编译期常量）。
+  static Duration cooldownAfterCorrect(
+      {required int masteredPoolSize, ScheduleTuning? t}) {
+    final cfg = t ?? ScheduleTuning.defaults();
+    return masteredPoolSize >= cfg.quizCount
+        ? Duration(days: cfg.quizCorrectDays)
+        : Duration(days: cfg.quizShortCooldownDays);
+  }
 
   /// 提交单条抽检结果（逐词提交，中途退出也不丢已完成的部分）。
   ///
-  /// - **答对**：失败计数清零（洗白），due 推后 15 天（池子不足 5 个时缩短为 7 天）
-  /// - **答错（第 1 次）**：保留 mastered，失败计数 = 1，due 推后 3 天尽快复检
-  /// - **答错（第 2 次）**：判定确实遗忘 → 退回 T3 重走周期
+  /// - **答对**：失败计数清零（洗白），due 推后 10 天（池子不足 10 个时缩短为 7 天）
+  /// - **答错（第 1 次）**：保留 mastered，失败计数 = 1，due 推后 2 天尽快复检
+  /// - **答错（第 2 次）**：判定确实遗忘 → 打回复习列表，从 T5 重新走周期
   void submitMasteredQuiz(int userWordId, {required bool correct}) {
     final now = DateTime.now().toUtc();
     // v2.1.8：抽检结果写进复习历史（kind = quiz），详情页显示为「抽查正确/失败」
@@ -329,7 +399,8 @@ class ReviewRepository {
         userWordId,
         due: now
             .add(cooldownAfterCorrect(
-                masteredPoolSize: _wordDao.countMastered()))
+                masteredPoolSize: _wordDao.countMastered(),
+                t: _tuning))
             .toIso8601String(),
         difficulty: 0,
       );
@@ -339,40 +410,40 @@ class ReviewRepository {
     final word = _wordDao.getById(userWordId);
     final prevFails = (word?['difficulty'] as num?)?.toDouble() ?? 0;
     if (shouldDemoteOnQuizWrong(prevFails)) {
-      // 第 2 次失败：移出 mastered，从 T3 重新走周期
-      demoteMasteredToT3(userWordId);
+      // 第 2 次失败：移出 mastered，打回复习列表从 T5 重新走周期
+      demoteMasteredToT5(userWordId);
       return;
     }
 
     _wordDao.updateMasteredQuizState(
       userWordId,
-      due: dueAfterWrong(now).toIso8601String(),
+      due: dueAfterWrong(now, t: _tuning).toIso8601String(),
       difficulty: 1,
     );
   }
 
   /// 重测环节**答对**、但此前抽检已错过一次：**不清零失败标记**（不洗白），
-  /// 只把复检窗口推到 3 天后——若复检再错，[submitMasteredQuiz] 会触发降级。
+  /// 只把复检窗口推到 2 天后——若复检再错，[submitMasteredQuiz] 会触发降级。
   ///
-  /// 设计意图：抽检错过一次的词要经过「3 天复检」这道关卡才算真正过关，
+  /// 设计意图：抽检错过一次的词要经过「2 天复检」这道关卡才算真正过关，
   /// 重测里答对只算"暂缓"，避免用一次侥幸抹掉遗忘信号。
   void holdMasteredQuizWrongMark(int userWordId) {
     final now = DateTime.now().toUtc();
     _wordDao.updateMasteredQuizState(
       userWordId,
-      due: dueAfterWrong(now).toIso8601String(),
+      due: dueAfterWrong(now, t: _tuning).toIso8601String(),
       difficulty: 1,
     );
   }
 
   /// 用户选择「暂不抽检」：仅把 due 推后（记账），卡片状态不变。
   ///
-  /// 推后 7 天（短于答对的 15 天），这些词会更快回到候选池——
+  /// 推后 7 天（短于答对的 10 天），这些词会更快回到候选池——
   /// 既不会被误认为「已测过」而搁置，也不会在同一批里立刻重复出现。
   void skipMasteredQuiz(List<int> userWordIds) {
     if (userWordIds.isEmpty) return;
     final now = DateTime.now().toUtc();
-    final due = dueAfterSkip(now).toIso8601String();
+    final due = dueAfterSkip(now, t: _tuning).toIso8601String();
     _db.transaction(() {
       for (final id in userWordIds) {
         final word = _wordDao.getById(id);
@@ -386,17 +457,20 @@ class ReviewRepository {
     });
   }
 
-  /// 第 2 次抽检失败 → 退回 **T3** 重新走周期（移出 mastered）。
+  /// 第 2 次抽检失败 → 打回**复习列表**并从 **T5** 重新走周期（移出 mastered）。
   ///
-  /// reps = 3 表示「下次执行 T3 节点」，due 按当前间隔表的第 3 档计算，
-  /// 因此未来切换到 T0–T7 的间隔表后会自动适配，无需再改这里。
-  void demoteMasteredToT3(int userWordId) {
+  /// v2.2.0 参数调整：打回目标由 T4 改为 **T5**（1 天后直接测 T5，跳过 T4 测验）。
+  /// reps = 5 表示「下次执行 T5 节点」，due 按间隔表第 5 档（默认 1 天，随配置档
+  /// 时间线浮动）计算；`difficulty` 清零 —— 打回即开始全新一轮 FSRS 流程，
+  /// 残留的抽检失败计数若不清零，该词下次毕业进抽检池后第一次答错就会被
+  /// 立即再次打回。
+  void demoteMasteredToT5(int userWordId) {
     _db.transaction(() {
       final word = _wordDao.getById(userWordId);
       if (word == null) return;
       final card = FsrsCard.fromDbMap(word);
       final now = DateTime.now().toUtc();
-      const reps = 3;
+      const reps = 5;
       final interval = _fsrs.intervalForReps(reps);
       _wordDao.updateCardState(
         userWordId,
@@ -411,5 +485,29 @@ class ReviewRepository {
         scheduledDays: 0,
       );
     });
+  }
+
+  /// 抽检错词的重测结算（v2.2.0 需求2 阶段①：复习页编排与自选页
+  /// **共用同一套数据与规则**，避免两处语义漂移）。
+  ///
+  /// - 重测通过 → **不洗白**：保留失败标记，复检窗口推后 2 天
+  ///   （[holdMasteredQuizWrongMark]；2 天后的复检再错仍会触发打回）
+  /// - 重测仍错（id 在 [failedIds] 中）→ 打回 T5（[demoteMasteredToT5]）
+  /// - 单条失败不影响其余（与页面侧此前的容错语义一致）
+  void settleMasteredQuizRetries(
+    List<int> userWordIds, {
+    required Set<int> failedIds,
+  }) {
+    for (final id in userWordIds) {
+      try {
+        if (failedIds.contains(id)) {
+          demoteMasteredToT5(id);
+        } else {
+          holdMasteredQuizWrongMark(id);
+        }
+      } catch (_) {
+        // 单条失败不影响其余
+      }
+    }
   }
 }

@@ -11,11 +11,22 @@ import '../../../shared/widgets/glass.dart';
 
 /// 词根挑战页
 /// 流程：词根卡片（弹层）→ 逐题（≤5 题，词根加粗，4 选 1 释义）→ 汇总
+/// v2.2.0 需求3：支持传入 matches 列表，结果页可「下一词根」连续测试。
 ///
 /// 设计约定（2026-08-30 液体玻璃）：aurora 背景 + 玻璃卡。
 class RootChallengePage extends ConsumerStatefulWidget {
   final RootMatch match;
-  const RootChallengePage({super.key, required this.match});
+  /// 可选：词根匹配列表（与 [index] 配合，支持结果页跳下一词根）
+  final List<RootMatch>? matches;
+  /// 本词根在 [matches] 中的下标
+  final int index;
+
+  const RootChallengePage({
+    super.key,
+    required this.match,
+    this.matches,
+    this.index = 0,
+  });
 
   @override
   ConsumerState<RootChallengePage> createState() =>
@@ -48,7 +59,33 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
 
   final List<_AnswerRecord> _records = [];
 
-  RootMatch get match => widget.match;
+  /// 当前词根在 matches 列表中的下标（v2.2.0 需求3）
+  late int _matchIndex = widget.index;
+
+  RootMatch get match => widget.matches != null
+      ? widget.matches![_matchIndex.clamp(0, widget.matches!.length - 1)]
+      : widget.match;
+
+  /// 是否还有下一词根
+  bool get _hasNextRoot =>
+      widget.matches != null && _matchIndex < widget.matches!.length - 1;
+
+  /// 跳到下一词根：重置全部作答状态并重建题目（跳过 intro 卡片直接进入答题）
+  void _nextRoot() {
+    if (!_hasNextRoot) return;
+    setState(() {
+      _matchIndex++;
+      _phase = 'quiz';
+      _index = 0;
+      _selected = null;
+      _submitted = false;
+      _correct = 0;
+      _passedThisRound = false;
+      _masteryAfter = 0;
+      _records.clear();
+    });
+    _buildQuestions();
+  }
 
   /// 深浅模式自适应的语义色（深色模式取亮化版本，保证对比度）
   Color _semantic(ThemeData theme, Color light, Color dark) =>
@@ -549,24 +586,38 @@ class _RootChallengePageState extends ConsumerState<RootChallengePage> {
               ),
             )),
         const SizedBox(height: 12),
-        Row(
+        // 收尾按钮：纵向满宽堆叠，避免窄屏 Row 挤压导致文字错位
+        // 优先级：下一词根 > 再测一次 > 返回
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _retry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('再测一次'),
+            if (_hasNextRoot) ...[
+              FilledButton.icon(
+                onPressed: _nextRoot,
+                icon: const Icon(Icons.skip_next),
+                label: const Text('下一词根'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            OutlinedButton.icon(
+              onPressed: _retry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('再测一次'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: GlassButton(
-                onPressed: () => context.pop(),
-                icon: Icons.arrow_back,
-                label: '返回词群记忆',
-                tinted: true,
-                height: 48,
-              ),
+            const SizedBox(height: 10),
+            GlassButton(
+              onPressed: () => context.pop(),
+              icon: Icons.arrow_back,
+              label: '返回词群记忆',
+              tinted: true,
+              height: 48,
+              blur: 0,
             ),
           ],
         ),

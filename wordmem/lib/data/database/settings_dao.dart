@@ -30,6 +30,31 @@ class SettingsDao {
     );
   }
 
+  // ───────────────── 学习节奏配置（v2.2.0 阶段 C） ─────────────────
+
+  /// 读取全部 `tune.*` 学习节奏键（缺键 = 未配置，由调用方回落默认档）。
+  Map<String, String> getTuning() {
+    final rows = _v
+        .select("SELECT key, value FROM app_settings WHERE key LIKE 'tune.%'");
+    return {
+      for (final r in rows) r['key'] as String: r['value'] as String,
+    };
+  }
+
+  /// 批量写入 `tune.*` 学习节奏键
+  void setTuning(Map<String, String> kv) {
+    _v.execute('BEGIN');
+    try {
+      for (final e in kv.entries) {
+        set(e.key, e.value);
+      }
+      _v.execute('COMMIT');
+    } catch (_) {
+      _v.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
   /// 获取 FSRS 参数
   Map<String, dynamic>? getFsrsParams() {
     final rows = _v.select('SELECT * FROM fsrs_params WHERE id = 1');

@@ -38,8 +38,10 @@ enum CardState {
 ///
 /// v2.1.8：**取消「熟练跳过」后，本档位只由节点进度决定** ——
 /// 不再有 `skipState` 参与（原来跳过档位会让同样 `reps` 直接高一档）。
-/// 映射：每 2 个节点升 1 档 → `[1,1,2,2,3,3,4,4]`，
-/// `completed` = 已完成的测验次数 = `reps`。
+/// v2.2.0（T0–T8 九节点）用户确认分段（4-2-2-1）：
+///   T0–T3 小试牛刀 / T4–T5 初出茅庐 / T6–T7 炉火纯青 / T8 登峰造极。
+/// `reps` = 下一个要执行的节点序号（reps=1 即处于 T1），映射表：
+///   `[1,1,1, 2,2, 3,3, 4,4]`（reps 9 已是 mastered，由 card_state 兜底第 4 档）。
 enum MasteryStatus {
   level1('小试牛刀'),
   level2('初出茅庐'),
@@ -52,7 +54,7 @@ enum MasteryStatus {
   /// 由节点进度派生档位（1~4）。
   static int levelOf({required int reps}) {
     if (reps <= 0) return 1;
-    const table = [1, 1, 2, 2, 3, 3, 4, 4];
+    const table = [1, 1, 1, 2, 2, 3, 3, 4, 4];
     return table[(reps - 1).clamp(0, table.length - 1)];
   }
 
