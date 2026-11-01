@@ -464,17 +464,30 @@ class ReviewRepository {
   /// 时间线浮动）计算；`difficulty` 清零 —— 打回即开始全新一轮 FSRS 流程，
   /// 残留的抽检失败计数若不清零，该词下次毕业进抽检池后第一次答错就会被
   /// 立即再次打回。
-  void demoteMasteredToT5(int userWordId) {
+  /// 打回到指定复习节点（v2.2.1 手动打回；自动打回也走这里，目标固定 T5）。
+  ///
+  /// - [targetReps]：目标节点序号 0..8（词的下一场测验 = T[targetReps]）；
+  ///   越界一律钳制到 0..8。
+  /// - reps<=4 → `learning`，5..8 → `review`（与 `FsrsService.review` 毕业判据
+  ///   `next <= 4 ? learning : review` 保持同一口径，避免打回后状态语义漂移）。
+  /// - **difficulty 必须清零**：对未掌握词它恒为 0；对 mastered 词它是抽检失败
+  ///   计数，若残留非零值，词重新毕业进抽检池后会因 difficulty>=1 被立即打回。
+  /// - mastered 词打回后即离开抽检池（候选=card_state='mastered'）；
+  ///   due=now+intervalForReps(targetReps)，T0 时 due=now、立即出现在复习队列首。
+  /// - 不写复习日志（与既有 demote 语义一致：编排类动作不留痕）。
+  void demoteMasteredTo(int userWordId, {required int targetReps}) {
     _db.transaction(() {
       final word = _wordDao.getById(userWordId);
       if (word == null) return;
       final card = FsrsCard.fromDbMap(word);
       final now = DateTime.now().toUtc();
-      const reps = 5;
+      final reps = targetReps.clamp(0, 8);
       final interval = _fsrs.intervalForReps(reps);
       _wordDao.updateCardState(
         userWordId,
-        cardState: CardState.review.value,
+        cardState: reps <= 4
+            ? CardState.learning.value
+            : CardState.review.value,
         stability: interval.inSeconds / 86400.0,
         difficulty: 0,
         reps: reps,
@@ -485,6 +498,30 @@ class ReviewRepository {
         scheduledDays: 0,
       );
     });
+  }
+
+  /// 自动打回（抽检连错两次）固定回 T5，语义与 v2.2.0 保持一致。
+  void demoteMasteredToT5(int userWordId) =>
+      demoteMasteredTo(userWordId, targetReps: 5);
+
+  /// 抽查错题本数据（v2.2.1）：所有抽检（kind='quiz'）中答错过的词，
+  /// 聚合答错次数（wrong_count）与最近一次答错时间（last_wrong_at），
+  /// 并附带词的当前学习状态字段（card_state/reps/due 等，来自 user_words 全列）。
+  ///
+  /// - 正确性编码在 rating（again=错），**必须带 kind='quiz' 过滤**：
+  ///   常规复习的 rating=again（今日忘记）不能混进错题本。
+  /// - 只覆盖 v2.1.8 之后有抽检日志的历史（更早版本抽检不写日志）。
+  /// - 打回/毕业等编排动作不删日志——错题历史是事实记录，不随状态回退消失。
+  List<Map<String, dynamic>> getQuizWrongEntries() {
+    final rows = _db.vocab.select(
+      '''SELECT uw.*, COUNT(*) AS wrong_count, MAX(rl.reviewed_at) AS last_wrong_at
+         FROM review_logs rl
+         JOIN user_words uw ON uw.id = rl.user_word_id
+         WHERE rl.kind = 'quiz' AND rl.rating = ?
+         GROUP BY rl.user_word_id''',
+      [ReviewRating.again.value],
+    );
+    return rows.map((r) => r as Map<String, dynamic>).toList();
   }
 
   /// 抽检错词的重测结算（v2.2.0 需求2 阶段①：复习页编排与自选页

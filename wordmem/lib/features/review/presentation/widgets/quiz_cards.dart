@@ -35,6 +35,10 @@ class EnToZhChoiceCard extends StatefulWidget {
   /// 题面单词本就可见，题面播放不泄答案。
   final void Function(String word)? onPlayWord;
 
+  /// v2.2.1：作答后点击选项跳转单词详情页手动打回（null = 不启用）。
+  /// 仅个人词库内的词可跳（WordOption.userWordId != null，词典干扰项无详情页）。
+  final void Function(int userWordId)? onOpenWord;
+
   const EnToZhChoiceCard({
     super.key,
     required this.word,
@@ -44,6 +48,7 @@ class EnToZhChoiceCard extends StatefulWidget {
     required this.onNext,
     required this.isLast,
     this.onPlayWord,
+    this.onOpenWord,
   });
 
   @override
@@ -172,6 +177,9 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
       ThemeData theme, int idx, WordOption opt, bool answered, bool correct) {
     final selected = _selected == idx;
     final isCorrectOpt = opt.word == widget.word;
+    // v2.2.1：作答后，词库内词的选项可点击跳详情页手动打回
+    final canOpen =
+        answered && opt.userWordId != null && widget.onOpenWord != null;
 
     Color bg = Colors.transparent;
     Color border = theme.dividerColor;
@@ -195,12 +203,14 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           OutlinedButton(
-            onPressed: answered
-                ? null
-                : () {
-                    setState(() => _selected = idx);
-                    widget.onAnswered(opt.word == widget.word);
-                  },
+            onPressed: canOpen
+                ? () => widget.onOpenWord!(opt.userWordId!)
+                : answered
+                    ? null
+                    : () {
+                        setState(() => _selected = idx);
+                        widget.onAnswered(opt.word == widget.word);
+                      },
             style: OutlinedButton.styleFrom(
               backgroundColor: bg,
               foregroundColor: fg,
@@ -210,15 +220,33 @@ class _EnToZhChoiceCardState extends State<EnToZhChoiceCard> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            child: Text(
-              opt.definition.isEmpty ? opt.word : opt.definition,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-              // v2.1.5：释义过长截断，防止选项区过高
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: canOpen
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          opt.definition.isEmpty ? opt.word : opt.definition,
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                          // v2.1.5：释义过长截断，防止选项区过高
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.open_in_new, size: 16, color: fg),
+                    ],
+                  )
+                : Text(
+                    opt.definition.isEmpty ? opt.word : opt.definition,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                    // v2.1.5：释义过长截断，防止选项区过高
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
           ),
           // v2.1.6：作答后补充该选项对应的英文单词——与「选单词」题型对称，
           // 让**干扰项也呈现中英对照**，便于复盘时加深记忆
@@ -252,6 +280,10 @@ class ChooseWordCard extends StatefulWidget {
   /// 单词发音回调（null = 不显示）。仅在作答后随正确答案显示，防泄答案。
   final void Function(String word)? onPlayWord;
 
+  /// v2.2.1：作答后点击选项跳转单词详情页手动打回（null = 不启用）。
+  /// 仅个人词库内的词可跳（WordOption.userWordId != null，词典干扰项无详情页）。
+  final void Function(int userWordId)? onOpenWord;
+
   const ChooseWordCard({
     super.key,
     required this.word,
@@ -261,6 +293,7 @@ class ChooseWordCard extends StatefulWidget {
     required this.onNext,
     required this.isLast,
     this.onPlayWord,
+    this.onOpenWord,
   });
 
   @override
@@ -381,6 +414,9 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
       ThemeData theme, int idx, WordOption opt, bool answered, bool correct) {
     final selected = _selected == idx;
     final isCorrectOpt = opt.word == widget.word;
+    // v2.2.1：作答后，词库内词的选项可点击跳详情页手动打回
+    final canOpen =
+        answered && opt.userWordId != null && widget.onOpenWord != null;
 
     Color bg = Colors.transparent;
     Color border = theme.dividerColor;
@@ -404,12 +440,14 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           OutlinedButton(
-            onPressed: answered
-                ? null
-                : () {
-                    setState(() => _selected = idx);
-                    widget.onAnswered(opt.word == widget.word);
-                  },
+            onPressed: canOpen
+                ? () => widget.onOpenWord!(opt.userWordId!)
+                : answered
+                    ? null
+                    : () {
+                        setState(() => _selected = idx);
+                        widget.onAnswered(opt.word == widget.word);
+                      },
             style: OutlinedButton.styleFrom(
               backgroundColor: bg,
               foregroundColor: fg,
@@ -419,11 +457,26 @@ class _ChooseWordCardState extends State<ChooseWordCard> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            child: Text(
-              opt.word,
-              style: theme.textTheme.bodyLarge
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
+            child: canOpen
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          opt.word,
+                          style: theme.textTheme.bodyLarge
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.open_in_new, size: 16, color: fg),
+                    ],
+                  )
+                : Text(
+                    opt.word,
+                    style: theme.textTheme.bodyLarge
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
           ),
           // 提交后显示该选项释义（v2.1.5：截断防撑爆屏幕）
           if (answered && opt.definition.isNotEmpty)

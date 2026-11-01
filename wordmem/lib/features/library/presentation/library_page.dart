@@ -235,29 +235,42 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       body: Column(
         children: [
           // 搜索范围切换：我的词库 / 词典（两个独立搜索入口）
+          // v2.2.1：右侧新增「抽查错题本」入口；SegmentedButton 包 Expanded 防窄屏溢出
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<_SearchScope>(
-                segments: const [
-                  ButtonSegment(
-                    value: _SearchScope.myWords,
-                    label: Text('我的词库'),
-                    icon: Icon(Icons.star_outline, size: 18),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<_SearchScope>(
+                    segments: const [
+                      ButtonSegment(
+                        value: _SearchScope.myWords,
+                        label: Text('我的词库'),
+                        icon: Icon(Icons.star_outline, size: 18),
+                      ),
+                      ButtonSegment(
+                        value: _SearchScope.dictionary,
+                        label: Text('词典'),
+                        icon: Icon(Icons.menu_book_outlined, size: 18),
+                      ),
+                    ],
+                    selected: {_scope},
+                    onSelectionChanged: (s) {
+                      setState(() => _scope = s.first);
+                      _loadWords();
+                    },
                   ),
-                  ButtonSegment(
-                    value: _SearchScope.dictionary,
-                    label: Text('词典'),
-                    icon: Icon(Icons.menu_book_outlined, size: 18),
-                  ),
-                ],
-                selected: {_scope},
-                onSelectionChanged: (s) {
-                  setState(() => _scope = s.first);
-                  _loadWords();
-                },
-              ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '抽查错题本',
+                  icon: const Icon(Icons.fact_check_outlined),
+                  onPressed: () async {
+                    await context.push('/quiz-wrong-book');
+                    if (mounted) _loadWords(); // 详情页里可能已打回，回来刷新状态
+                  },
+                ),
+              ],
             ),
           ),
           // 筛选栏（仅我的词库模式）

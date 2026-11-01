@@ -446,7 +446,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   List<WordOption> get _currentOptions =>
       _optionsCache[_word['id'] as int] ??
-      [WordOption(word: _currentWord, definition: _currentDef)];
+      [
+        // 兜底单选项也要带 id（v2.2.1：作答后可跳详情页）
+        WordOption(
+            word: _currentWord,
+            definition: _currentDef,
+            userWordId: _word['id'] as int),
+      ];
 
   void _chooseAnswered(bool correct) {
     final id = _word['id'] as int;
@@ -1153,6 +1159,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     );
   }
 
+  /// v2.2.1：测验中跳转单词详情页（作答后点选项）。
+  /// 页面状态全在 State 字段，push 返回后进度与反馈态原样保留，
+  /// 可直接「下一题」继续；打回改动当轮队列不变，下一轮复习生效。
+  void _openWordDetail(int userWordId) {
+    context.push('/word/$userWordId');
+  }
+
   Widget _buildQuiz() {
     final total = _queue.length;
     final progress = _index / total;
@@ -1174,6 +1187,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
               : null,
+          onOpenWord: _openWordDetail,
         );
       case _Stage.chooseWord:
         title = '选单词 ${_index + 1} / $total';
@@ -1188,6 +1202,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
           onPlayWord: audioEnabled
               ? (w) => ref.read(pronunciationServiceProvider).speak(w)
               : null,
+          onOpenWord: _openWordDetail,
         );
       case _Stage.dictation:
         title = '默写 ${_index + 1} / $total';

@@ -601,6 +601,15 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
                       ],
                     ),
                   ),
+                  // 手动打回（v2.2.1）：非新词可自行回退到任意 T0–T8 节点重走
+                  if (cardState != 'new') ...[
+                    const SizedBox(height: 12),
+                    GlassButton(
+                      label: '打回复习',
+                      icon: Icons.undo_rounded,
+                      onPressed: _demote,
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   // 复习历史
@@ -684,8 +693,102 @@ class _WordDetailPageState extends ConsumerState<WordDetailPage> {
       'learning' => '学习中',
       'review' => '复习中',
       'relearning' => '重新学习',
+      'mastered' => '已掌握',
       _ => state,
     };
+  }
+
+  /// 手动打回（v2.2.1）：非新词可自行回退到任意 T0–T8 节点重走。
+  /// 默认选中 T5，与自动打回（抽检连错两次）目标一致。
+  Future<void> _demote() async {
+    final word = _word;
+    if (word == null) return;
+    final fsrs = ref.read(fsrsServiceProvider);
+    final currentReps = (word['reps'] as int?) ?? 0;
+    final isMastered = (word['card_state'] as String?) == 'mastered';
+    var selected = 5;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('打回复习'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isMastered
+                      ? '打回后该词离开熟练抽检池，按所选阶段重新走复习流程。'
+                      : '打回后按所选阶段重新排期；打回当轮不受影响，下一轮生效。',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: RadioGroup<int>(
+                    groupValue: selected,
+                    onChanged: (v) => setDialogState(() => selected = v!),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: 9,
+                      itemBuilder: (ctx, i) {
+                        final isCurrent = !isMastered && i == currentReps;
+                        return RadioListTile<int>(
+                          value: i,
+                          dense: true,
+                          title: Text('T$i · 第${i + 1}次测验'),
+                          subtitle: Text(
+                            isCurrent
+                                ? '当前所在阶段'
+                                : i == 0
+                                    ? '立即出现在复习队列'
+                                    : '距测验 ${_fmtInterval(fsrs.intervalForReps(i))}',
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('打回')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      ref
+          .read(reviewRepositoryProvider)
+          .demoteMasteredTo(widget.wordId, targetReps: selected);
+      // updateCardState 不发信号：手动自增版本号刷新词库/首页计数
+      ref.read(wordListVersionProvider.notifier).state++;
+      if (!mounted) return;
+      _loadData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已打回到 T$selected，按新节奏重新排期')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('打回失败: $e')),
+      );
+    }
+  }
+
+  String _fmtInterval(Duration d) {
+    if (d.inMinutes < 60) return '${d.inMinutes} 分钟';
+    if (d.inHours < 24) return '${d.inHours} 小时';
+    return '${d.inDays} 天';
   }
 }
 

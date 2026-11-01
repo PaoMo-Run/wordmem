@@ -9,7 +9,7 @@ class AppConstants {
   ///
   /// ⚠️ 仅作兜底/元数据用：UI 展示请优先用 PackageInfo 实时读取
   /// （about_page / me_page），避免发版时忘记同步此处。
-  static const String appVersion = '2.2.0';
+  static const String appVersion = '2.2.1';
 
   // FSRS-5 默认参数（历史遗留，仅用于 fsrs_params 表兼容）。
   // 当前复习算法已切换为艾宾浩斯遗忘曲线，不再使用这组权重。
@@ -123,4 +123,7 @@ class AppConstants {
   /// 用户已选「稍后」的云端快照名（v2.1.7）：同一份快照不再重复提示，
   /// 只有云端出现更新的快照时才会再次询问。
   static const String keySyncProbeDismissed = 'sync_probe_dismissed_snapshot';
+
+  /// 抽查错题本排序偏好（v2.2.1）：形如 'time_desc' / 'count_asc'。
+  static const String keyQuizWrongBookSort = 'quiz_wrong_book_sort';
 }

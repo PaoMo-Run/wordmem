@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../widgets/glass.dart';
 import '../../features/today/presentation/today_page.dart';
 import '../../features/library/presentation/library_page.dart';
+import '../../features/library/presentation/quiz_wrong_book_page.dart';
 import '../../features/review/presentation/review_center_page.dart';
 import '../../features/review/presentation/review_page.dart';
 import '../../features/review/presentation/custom_review_page.dart';
@@ -129,6 +130,11 @@ final appRouter = GoRouter(
       builder: (context, state) => AddWordPage(
         initialWord: state.extra is String ? state.extra as String : null,
       ),
+    ),
+    GoRoute(
+      path: '/quiz-wrong-book',
+      name: 'quizWrongBook',
+      builder: (context, state) => const QuizWrongBookPage(),
     ),
     GoRoute(
       path: '/text-import',

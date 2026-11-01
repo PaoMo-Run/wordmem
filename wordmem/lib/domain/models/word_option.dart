@@ -3,7 +3,15 @@ class WordOption {
   final String word;
   final String definition;
 
-  const WordOption({required this.word, required this.definition});
+  /// 该选项对应个人词库的 user_words.id（v2.2.1 新增）。
+  /// null = 干扰项来自内置词典、词库里没有这个词 → 作答后不可跳详情页。
+  final int? userWordId;
+
+  const WordOption({
+    required this.word,
+    required this.definition,
+    this.userWordId,
+  });
 }
 
 /// 复习测验两环节的四选一选项（v2.1.5 统一随机化）

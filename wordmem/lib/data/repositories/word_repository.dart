@@ -416,8 +416,10 @@ class WordRepository {
     final def = (correctDef != null && correctDef.isNotEmpty)
         ? correctDef
         : (_dictSource.lookup(correctWord)?.translation ?? '');
+    // v2.2.1：正确词带 userWordId（作答后可跳详情页手动打回）
+    final correctId = _wordDao.getByWord(correctWord)?['id'] as int?;
     final options = <WordOption>[
-      WordOption(word: correctWord, definition: def),
+      WordOption(word: correctWord, definition: def, userWordId: correctId),
     ];
 
     // 优先从整个词典挑选形似干扰项（考察识别能力）
@@ -440,6 +442,7 @@ class WordRepository {
         options.add(WordOption(
           word: wWord,
           definition: (w['custom_def'] as String?) ?? '',
+          userWordId: w['id'] as int,
         ));
       }
     }
@@ -483,7 +486,9 @@ class WordRepository {
       if (pool.length >= poolCap) break;
       final word = w['word'] as String;
       if (!poolSeen.add(word.toLowerCase())) continue;
-      pool.add(WordOption(word: word, definition: defs[w['id'] as int] ?? ''));
+      pool.add(WordOption(
+          word: word, definition: defs[w['id'] as int] ?? '',
+          userWordId: w['id'] as int));
     }
     // 2) 个人词库随机补足
     if (pool.length < poolCap) {
@@ -496,7 +501,8 @@ class WordRepository {
         if (def.isEmpty) {
           def = (_dictSource.lookup(word)?.translation ?? '').trim();
         }
-        pool.add(WordOption(word: word, definition: def));
+        pool.add(WordOption(
+            word: word, definition: def, userWordId: w['id'] as int));
       }
     }
     // 3) 内置词典随机兜底（保证队列很小时也能凑满 4 选项）
@@ -518,7 +524,9 @@ class WordRepository {
       final shuffledPool = [...pool]..shuffle(random);
 
       // 汉译英：正确单词 + 3 个随机干扰（词不重复）
-      final wo = <WordOption>[WordOption(word: word, definition: correctDef)];
+      final wo = <WordOption>[
+        WordOption(word: word, definition: correctDef, userWordId: id)
+      ];
       final usedWords = <String>{word.toLowerCase()};
       for (final cand in shuffledPool) {
         if (wo.length >= 4) break;
@@ -531,14 +539,18 @@ class WordRepository {
       var enToZhOk = correctDef.isNotEmpty;
       final ez = <WordOption>[];
       if (enToZhOk) {
-        ez.add(WordOption(word: word, definition: correctDef));
+        ez.add(WordOption(word: word, definition: correctDef, userWordId: id));
         final usedDefs = <String>{correctDef};
         for (final cand in shuffledPool) {
           if (ez.length >= 4) break;
           if (cand.word.toLowerCase() == word.toLowerCase()) continue;
           final d = cand.definition.trim();
           if (d.isEmpty || !usedDefs.add(d)) continue;
-          ez.add(WordOption(word: cand.word, definition: d));
+          // v2.2.1 修复：透传干扰项的 userWordId——重建对象时丢掉它会导致
+          // 英译汉环节除正确项外全部不可跳详情页（汉译英是直接 add(cand)
+          // 透传，所以没暴露）
+          ez.add(WordOption(
+              word: cand.word, definition: d, userWordId: cand.userWordId));
         }
         if (ez.length < 4) enToZhOk = false;
       }
